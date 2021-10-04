@@ -1,0 +1,11 @@
+[
+  "kinematic_test.py::test_FKSpace1DArray",
+  "kinematic_test.py::test_FKSpaceNoTranspose",
+  "kinematic_test.py::test_FKSpaceNormal",
+  "kinematic_test.py::test_IKSpaceJointClass",
+  "kinematic_test.py::test_IKSpaceNormal",
+  "kinematic_test.py::test_IKSpaceOutOfWorkSpace",
+  "kinematic_test.py::test_ThetaGuessNoJoints",
+  "kinematic_test.py::test_ThetaGuessNormal",
+  "kinematic_test.py::test_ThetaGuessNormalizing"
+]
