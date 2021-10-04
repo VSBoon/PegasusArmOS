@@ -12,20 +12,6 @@ class IKAlgorithmError(BaseException):
         self.message = message
     def __str__(self):
         return self.message
-
-class Joint():
-    """A storage class combining all the information relevant to joint
-    calculations.
-    :param screwAx: A 6x1 screw axis, as per Definition 3.24 of the 
-    Modern Robotics book
-    :param inSpace: Notes if the screw axis is in the space frame
-    (True) or in the body frame (False)
-    :param lims: The joint limits, in the order 'lower, upper'."""
-    def __init__(self, screwAx: np.ndarray, lims: List[float] = 
-                 [-2*np.pi, 2*np.pi], inSpace: bool = True):
-        self.screwAx = screwAx
-        self.inSpace = inSpace
-        self.lims = lims
     
 
 def screwsToMat(screws: List[np.ndarray]) -> np.ndarray:

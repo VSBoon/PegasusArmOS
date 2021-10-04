@@ -18,6 +18,7 @@ def FKSpace(TsbHome: np.ndarray, spaceScrews: List[np.ndarray],
     :return TsbNew: The new end-effector configuration based on the 
     list of joint angles.
     
+    
     Example input:
     TsbHome = np.array([[1, 0, 0, 0.2],
                         [0, 1, 0, 0],
