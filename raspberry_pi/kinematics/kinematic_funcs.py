@@ -11,12 +11,13 @@ def FKSpace(TsbHome: np.ndarray, spaceScrews: List[np.ndarray],
     given the home configuration of the end-effector, the screw axes of
     the joints in the end-effector frame, and the list of joint angles.
     :param TsbHome: The SO(3) transformation matrix from the space 
-    frame {s} to the end-effector frame {b} when the robot is in its 
-    home configuration.
+                    frame {s} to the end-effector frame {b} when the 
+                    robot is in its home configuration.
     :param spaceScrews: List of 6x1 screw vectors in the space frame, 
-    as per Definition 3.24 of the Modern Robotics book.
+                        as per Definition 3.24 of the Modern Robotics 
+                        book.
     :return TsbNew: The new end-effector configuration based on the 
-    list of joint angles.
+                    list of joint angles.
     
     
     Example input:
@@ -55,28 +56,29 @@ def IKSpace(TsbHome: np.ndarray, TsbTarget: np.ndarray, spaceScrews:
     solutions exist, it will return the solution with the smallest
     change in joint angles. Alternatively, if no exact solution exists,
     it returns the solution closest to it in terms of joint angles. 
-    :param TsbHome: The SO(3) representation of the end-
-    effector home configuration.
+    :param TsbHome: The SO(3) representation of the end- 
+                    effector home configuration.
     :param TsbTarget: The SO(3) representation of the desired end-
-    effector configuration
+                      effector configuration
     :param spaceScrews: A list of 6x1 vectors describing the screw axes
-    of each joint in the space frame, as per Definition 3.24 of the 
-    Modern Robotics book.
+                        of each joint in the space frame, as per 
+                        Definition 3.24 of the Modern Robotics book.
     :param jointLimits: A list of joint limits per joint, with the n-th
-    entry being a list of the lower- and upper joint limit of the 
-    n-th joint.
-    :param nGuessJoints: The number of joints on which a rudimentary
-    joint angle guessing algorithm is used to generate an initial guess
-    for the solution of the inverse kinematics problem.
+                        entry being a list of the lower- and upper 
+                        joint limit of the n-th joint.
+    :param nGuessJoints: The number of joints on which the joint angle 
+                         guessing algorithm is used to generate an 
+                         initial guess.
     :param eRad: The maximum allowed end-effector orientation error
-    with respect to the target configuration.
+                 with respect to the target configuration.
     :param eLin: The maximum allowed end-effector position error with
-    respect to the target configuration.
+                 respect to the target configuration.
     :return thetaList: List of joint angles which result in an end-
-    effector configuration that is within the error limits eRad and 
-    eLin to the target configuration TsbTarget.
+                       effector configuration that is within the error 
+                       limits eRad and eLin to the target configuration 
+                       TsbTarget.
     :return success: Boolean that returns whether a valid solution was
-    found (True) or not (False).
+                     found (True) or not (False).
     
     Example input:
     TsbCurrent = np.array([[1,0,0,0],

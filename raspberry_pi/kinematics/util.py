@@ -18,8 +18,9 @@ def screwsToMat(screws: List[np.ndarray]) -> np.ndarray:
     """Translates list of screw axes into a matrix desired by the 
     Modern Robotics library.
     :param screws: List of 6x1 screw vectors, as per Definition
-    3.24 of the Modern Robotics book (but transposed relatively).
-    :return screwMat: nx6 matrix with the screw axes as the columns
+                   3.24 of the Modern Robotics book (but transposed 
+                   relatively).
+    :return screwMat: nx6 matrix with the screw axes as the columns.
     Example input:
     screws = (np.array([[0, 1, 0, 0, 0, 0.2]]), 
               np.array([[0, 0, 1, 0.1, 0, 0]]))
@@ -38,8 +39,8 @@ def screwsToMat(screws: List[np.ndarray]) -> np.ndarray:
 def screwsToMat1D(screws1D: List[np.ndarray]) -> np.ndarray:
     """Translates list of one dimensional screw axes into a matrix 
     desired by the Modern Robotics library.
-    :param screws1D: List of 1D screw vectors with 6 entries
-    :return screwMat: nx6 matrix with the screw axes as the columns
+    :param screws1D: List of 1D screw vectors with 6 entries.
+    :return screwMat: nx6 matrix with the screw axes as the columns.
     Example input:
     screws = (np.array([0, 1, 0, 0, 0, 0.2]), 
               np.array([0, 0, 1, 0.1, 0, 0]))
@@ -60,8 +61,8 @@ def screwsToMatT(screwsT: List[np.ndarray]) -> np.ndarray:
     """Translates list of transposed screw axes into a matrix 
     desired by the Modern Robotics library.
     :param screws1D: List of 1x6 screw vectors, as per Definition
-    3.24 of the Modern Robotics book.
-    :return screwMat: nx6 matrix with the screw axes as the columns
+                     3.24 of the Modern Robotics book.
+    :return screwMat: nx6 matrix with the screw axes as the columns.
     Example input:
     screws = (np.array([[0, 1, 0, 0, 0, 0.2]].T), 
               np.array([[0, 0, 1, 0.1, 0, 0]].T))
@@ -82,19 +83,25 @@ def ThetaInitGuess(psbHome: np.ndarray, psbTarget: np.ndarray, majorScrewJoints:
     """Computes the initial angle gues of an inverse-kinematics 
     problem for the given joint.
     :param psbHome: the 3-vector describing the coordinates of the end-
-    effector in its home configuration.
+                    effector in its home configuration.
     :param psbTarget: the 3-vector describing the coordinates of the end-
-    effector in its goal configuration.
-    :param spaceScrew: List containing the screw axes in the
-    space frame(6x1) of the joints nearest to the base of the robot. 
-    It is advised to use only one of two of these joints for accuracy
-    purposes.
+                      effector in its goal configuration.
+    :param spaceScrew: List containing the screw axes in the space 
+                       frame (6x1) of the joints nearest to the base 
+                       of the robot. 
     :param jointLimits: A list of the lower & upper joint limits of
-    each joint.
-    :return thetaInitGuess: A very rudimentary initial guess of the 
-    required joint angles to go from the home configuration to the
-    target configuration.
-    
+                        each joint.
+    :return thetaInitGuess: A rudimentary initial guess of the required
+                            joint angles to go from the home 
+                            configuration to the target configuration.
+    Example input:
+    psbCurrent = np.array([1,0,0])
+    psbTarget = np.array([2,0,0])
+    majorScrewJoints = [np.array([0,1,0,-1,0,0])]
+    jointLimits = [[-np.pi, np.pi], [-np.pi, np.pi], [-np.pi, np.pi], 
+                   [-np.pi, np.pi], [-np.pi, np.pi]]
+    Output:
+    [-0.32, 0, 0, 0, 0]
     Known limits: 
     * Only works with rotational axes in line with major
     axes of the space frame.
