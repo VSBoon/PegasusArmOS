@@ -2,7 +2,7 @@ import modern_robotics as mr
 import numpy as np
 from typing import Union, List, Tuple
 
-def trajGen(startConfig: Union[np.ndarray, List[float]], endConfig: 
+def TrajGen(startConfig: Union[np.ndarray, List[float]], endConfig: 
     Union[np.ndarray, List[float]], tTot: float, nSubConfigs: int, 
     method: str="screw", timeScaling: int = 3) -> Tuple[np.ndarray, List[float]]:
     """Docstring"""
