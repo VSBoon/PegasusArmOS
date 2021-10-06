@@ -1,19 +1,6 @@
 import numpy as np
 from typing import List, Tuple
-
-class IKAlgorithmError(BaseException):
-    """Custom error class for when the inverse kinematics algorithm is 
-    unsuccesful"""
-    def __init__(self, message: str = """The Inverse Kinematics algorithm 
-                 could not find a solution within its given iterations. This 
-                 implies that either the configuration is outside of the 
-                 workspace of the robot, or the initial angle guess was too 
-                 far off."""):
-        self.message = message
-    def __str__(self):
-        return self.message
     
-
 def screwsToMat(screws: List[np.ndarray]) -> np.ndarray:
     """Translates list of screw axes into a matrix desired by the 
     Modern Robotics library.
