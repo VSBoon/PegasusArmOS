@@ -1,5 +1,8 @@
+import sys
+sys.path.append('C:\\DeKUT_Internship\\Robot_Arm\\PegasusArmOS\\raspberry_pi\\')
 from kinematic_funcs import FKSpace, IKSpace
-from util import IKAlgorithmError, ThetaInitGuess, Joint
+from util import ThetaInitGuess
+from classes import Joint, IKAlgorithmError
 import modern_robotics as mr
 import numpy as np
 import math

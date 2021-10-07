@@ -1,7 +1,10 @@
+import sys
+sys.path.append('C:\\DeKUT_Internship\\Robot_Arm\\PegasusArmOS\\raspberry_pi\\')
 import modern_robotics as mr
 import numpy as np
 from typing import List, Tuple
-from util import IKAlgorithmError, ThetaInitGuess, screwsToMat, screwsToMat1D, screwsToMatT
+from util import ThetaInitGuess, screwsToMat, screwsToMat1D, screwsToMatT
+from classes import IKAlgorithmError
 
 #TODO: Implement IK, translate back to actual joint angles m4 & m5
 
@@ -128,22 +131,3 @@ def IKSpace(TsbHome: np.ndarray, TsbTarget: np.ndarray, spaceScrews:
         elif thetaList[i] < jointLimits[i][0]:
             thetaList[i] = jointLimits[i][0]
     return (thetaList, success)
-
-if __name__ == "__main__":
-    #Numpy print settings
-    np.set_printoptions(precision=4, suppress=True)
-    TsbCurrent = np.array([[1,0,0,0],
-                           [0,1,0,5],
-                           [0,0,1,3],
-                           [0,0,0,1]])
-    TsbTarget = np.array([[0,1,0,5],
-                          [-1,0,0,0],
-                          [0,0,1,3],
-                          [0,0,0,1]])
-    spaceScrews = [np.array([0,0,1,0,0,0]), np.array([-1,0,0,0,-2,0]), np.array([0,1,0,-3,0,0])]
-    nGuessJoints = 1
-    jointLimits = [[-np.pi, np.pi], [-np.pi, np.pi], [-np.pi, np.pi]]
-    eRad=1e-2
-    eLin=1e-2
-    thetaList, success = IKSpace(TsbCurrent, TsbTarget, spaceScrews, jointLimits, nGuessJoints, eRad, eLin)
-    print(thetaList, success)
