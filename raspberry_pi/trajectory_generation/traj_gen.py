@@ -1,6 +1,6 @@
 import sys
 sys.path.append('C:\\DeKUT_Internship\\Robot_Arm\\PegasusArmOS\\raspberry_pi\\')
-from classes import Robot, DimensionError
+from classes import Robot, Joint, Link, DimensionError
 from kinematics.kinematic_funcs import IKSpace
 import modern_robotics as mr
 import numpy as np
@@ -28,6 +28,14 @@ def TrajGen(startConfig: Union[np.ndarray, List[float]], endConfig:
     :param timeScaling: The order of the time polynomial which is 
                         followed for the trajectory. Choice between
                         cubic (3) or quintic (5).
+    :return traj: List of configurations evolving linearly in the 
+                  desired space (determined by 'method').
+    :return timeList: List of timestamps for each configuration in 
+                      'traj'.
+    Example input:
+
+    Output:
+
     """
     if timeScaling != 3 | timeScaling != 5:
                 print("Invalid timeScaling; defaulting to quintic.")
@@ -76,11 +84,30 @@ def TrajGen(startConfig: Union[np.ndarray, List[float]], endConfig:
     timeList = [dt * (tTot/(nSubConfigs-1)) for dt in range(0, nSubConfigs)]
     return traj, timeList
 
-def trajDerivatives(traj: Union[List[np.ndarray], List[List[float]]], 
+def TrajDerivatives(traj: Union[List[np.ndarray], List[List[float]]], 
                     method: str, robot: Robot, deltaT: float) \
                     -> Tuple[List[List[float]]]:
+    """Calculates the time derivatives of a sequential list of 
+    configurations.
+    :param traj: List of sequential configurations in either the joint- 
+                 or work space.
+    :param method: The space in which the trajectory linearly evolves
+                   over time. Either 'joint', 'screw', or 'cartesian'.
+    :param robot: Robot class object describing the robot in question.
+    :param deltaT: Time between each configuration.
+    :return trajTheta: The trajectory in joint space.
+    :return trajVel: The joint velocities during the trajectory.
+    :return trajAcc: The join accelerations during the trajectory.
+    Example input:
+
+    Output:
+    
+    TODO: FINISH DOCSTRING
+    """
     if method != "joint" and method != "Joint":
-        trajTheta = [IKSpace(robot.TsbHome, traj[i], robot.screwAxes, 
+        # robot.links[-1].Tsi = TsbHome, the end-effector frame described in
+        # the space frame at the home configuration of the robot.
+        trajTheta = [IKSpace(robot.links[-1].Tsi, traj[i], robot.screwAxes, 
                      robot.lims)[0].tolist() for i in range(len(traj))]
     else:
         trajTheta = traj
@@ -89,3 +116,54 @@ def trajDerivatives(traj: Union[List[np.ndarray], List[List[float]]],
     trajAcc = [(trajVel[i] - trajVel[i-1])/deltaT 
                for i in range(1, len(trajTheta))]
     return trajTheta, trajVel, trajAcc
+
+if __name__ == "__main__":
+    #Inertia matrices
+    iMat1 = np.array([[]])
+    massList = [4.99, 0.507, 0.420, 0.952, 0.952]
+    #Transformation matrices from CoM of links with principle axes of
+    #inertia to the space frame (Tsi):
+    Tsi1 = np.array([[0.3804 ,-0.9215,0.0786 ,-0.0103],
+                     [0.8774 ,0.3864 ,0.2843 ,-0.0292],
+                     [-0.2924,-0.0392,0.9555 ,0.0642 ],
+                     [0      ,0      ,0      ,1      ]])
+    Tsi2 = np.array([[-0.0002,0.0008 ,-1.0000,0.0350 ],
+                     [0.4553 ,0.8903 ,0.0007 ,-0.0083],
+                     [0.8903 ,-0.4553,-0.0006,0.1666 ],
+                     [0      ,0      ,0      ,1      ]])
+    Tsi3 = np.array([[-0.9966,0.0819 ,-0.0003,0.0814 ],
+                     [-0.0819,-0.9966,0.0008 ,-0.0083],
+                     [-0.0002,0.0008 ,1.0000 ,0.3550 ],
+                     [0      ,0      ,0      ,1      ]])
+    Tsi45 = np.array([[-0.0326,0.0002 ,-0.9995,0.2640 ],
+                      [-0.0004,1.0000 ,0.0002 ,-0.0059],
+                      [-0.9995,0.0004 ,-0.0326,0.3504 ],
+                      [0      ,0      ,0      ,1      ]])
+    #Screw axes in the Space Frame {s}
+    S1 = np.array([0,0,1,0,0,0])
+    S2 = np.array([0,1,0,-0.0035,0,0.126])
+    S3 = np.array([0,1,0,-0.0035,0,0.335])
+    S4 = np.array([0,1,0,-0.234,0,0.355])
+    S5 = np.array([0,0,1,-0.234,-0.016,0])
+    gearRatioList = [19.7*50, 19.7*50, (65.5*20)/9, (65.5*20)/9, (127.7*32)/9]
+    J1 = Joint()
+    J2 = Joint()
+    J3 = Joint()
+    J4 = Joint()
+    J5 = Joint()
+    J6 = Joint()
+    L1 = Link()
+    L2 = Link()
+    L3 = Link()
+    L4 = Link()
+    L5 = Link()
+    Pegasus = Robot()
+
+
+    startConfig = [0,0,0,0,0]
+    endConfig = [0.5*np.pi, 0.2*np.pi, 0.1*np.pi, 0.3*np.pi, 0.4*np.pi, 0]
+    vMax = 0.5
+    omgMax = 0.2
+    dt = 0.1
+    traj, timeList = TrajGen(startConfig, endConfig, vMax, omgMax, dt, method="joint", timeScaling=5)
+    trajTheta, trajVel, trajAcc = TrajDerivatives(traj, method="joint", Pegasus)
