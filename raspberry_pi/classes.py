@@ -30,24 +30,24 @@ class Link():
 class Joint():
     """A storage class combining all the information relevant to joint
     calculations."""
-    def __init__(self, screwAx: np.ndarray, links: List[Link], 
-                 jointChild: 'Joint' = None, lims: List[float] = 
+    def __init__(self, screwAx: np.ndarray, links: List[Link], gearRatio: 
+                 float, jointChild: 'Joint' = None, lims: List[float] = 
                  [-2*np.pi, 2*np.pi], inSpace: bool = True):
         """Constructor for Joint class.
         :param screwAx: A 6x1 screw axis in the home configuration, per 
         Definition 3.24 of the Modern Robotics book.
-        :param Tjoints: SO(3) representation of the transformation to 
-                        go from the current joint n to its successor 
-                        in the chain, joint n+1.
         :param links: Connecting links, in the order [prev, next].
         :param jointChild: Joint n+1, which is one link closer to the 
                             end-effector than the current join, n.
+        :param gearRatio: The reduction ratio 1:gearRatio between the
+                          motor shaft and joint axes.
         :param lims: The joint limits, in the order [lower, upper].
         :param inSpace: Notes if the screw axis is in the space frame
                         (True) or in the body frame (False)."""        
         self.screwAx: np.ndarray = screwAx
         self.jointChild: Joint = jointChild
         self.lims: List[float] = lims
+        self.gearRatio = gearRatio
         self.links: List[Link] = links
         self.inSpace: bool = inSpace
     
@@ -58,26 +58,26 @@ class Joint():
 
 class Robot():
     """Overarching robot class"""
-    def __init__(self, jointList: List[Joint], linkList: List[Link]):
-        self.jointList: List[Joint] = jointList
+    def __init__(self, joints: List[Joint], links: List[Link]):
+        self.joints: List[Joint] = joints
         self.screwAxes: List[np.ndarray] = [joint.screwAx for joint in 
-                                            jointList]
-        self.limList: List[List[float]] = [joint.lims for joint in jointList]
-        self.linkList: List[Link] = linkList
-        self.GiList: List[np.ndarray] = [link.Gi for link in linkList]
+                                            joints]
+        self.limList: List[List[float]] = [joint.lims for joint in joints]
+        self.links: List[Link] = links
+        self.GiList: List[np.ndarray] = [link.Gi for link in links]
         
         self.TllList: List[np.ndarray] = []
-        for i in range(len(1,self.linkList)):
+        for i in range(len(1,self.links)):
             #Transformation matrix of link {i} in link {i-1}
-            Tll = np.dot(mr.TransInv(self.linkList[i-1].Tsi), 
-                         self.linkList[i].Tsi) 
+            Tll = np.dot(mr.TransInv(self.links[i-1].Tsi), 
+                         self.links[i].Tsi) 
             self.TllList[i-1] = Tll
         self.TsbHome: np.ndarray = self.TllList[-1]
     
     def __repr__(self):
-        return f"Robot:(jointList: {self.jointList}\nscrewAxes: " +\
-               f"{self.screwAxes}\nlimList: {self.limList}\nlinkList: " +\
-               f"{self.linkList}\n GiList: {self.GiList}\n TllList: " +\
+        return f"Robot:(joints: {self.joints}\nscrewAxes: " +\
+               f"{self.screwAxes}\nlimList: {self.limList}\nlinks: " +\
+               f"{self.links}\n GiList: {self.GiList}\n TllList: " +\
                f"{self.TllList}\n TsbHome: {self.TsbHome}"
 
 # class SpaceTraj():
