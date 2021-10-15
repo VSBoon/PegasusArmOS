@@ -1,16 +1,15 @@
 #include <elapsedMillis.h>
-elapsedMillis sinceCheck;
+elapsedMillis commTimer;
 /** A test for serial USB communication between the Arduino Uno R3
  *  and the Raspberry Pi Model 3b+. 
  *  Written by: Vincent Sebastiaan Boon (v_s_boon@live.nl)
  *  Date: 21-09-2021
 */
+//TODO: Docstrings
 String command;
 const int nCommands = 6; //Number of seperate groups of data.
 long mSpeed[nCommands];
 int rotCCW[nCommands];
-
-
 
 const byte mSpeedPin = 5;
 const byte m1a = 7;
@@ -20,10 +19,13 @@ const byte e1b = 3;
 
 int totCount[nCommands] = {0};
 int rotDir[nCommands] = {0};
+int curr[nCommands] = {0};
+int homing[nCommands] = {0};
 char totCountBuff[nCommands][4];
 char rotDirBuff[nCommands][2];
 
-int waitTime = 10;
+int dtComm = 10;
+int dtCurrBuff = 20;
 
 
 void setup() {
@@ -48,7 +50,7 @@ void loop() {
     digitalWrite(m1a, HIGH);
     digitalWrite(m1b, LOW);
   }
-  if (sinceCheck > waitTime) {
+  if (commTimer > dtComm) {
     //Send data to Raspberry Pi
     if (Serial.availableForWrite()) {
       for(int i = 0; i < nCommands; i++) {
@@ -63,7 +65,7 @@ void loop() {
       Serial.write('\r');
       Serial.write('\n');
     }
-    sinceCheck = 0;
+    commTimer = 0;
   }
 }
 
@@ -84,9 +86,6 @@ void parseCommand(String com) {
     parseIndex = endIndex+1;  //Start parsing the next data group
     commandIt++;
   }
-  //DEBUG
-  Serial.println(com);
-  Serial.println(mSpeed[0]);
 }
 
 void serialReadAndParse() {
