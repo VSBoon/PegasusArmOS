@@ -115,6 +115,8 @@ class SerialData():
         self.desAngle = desAngles
         self.totCount = [None for i in range(lenData)]
         self.rotDirCurr = [None for i in range(lenData)]
+        self.current = [None for i in range(lenData)]
+        self.homing = [None for i in range(lenData)]
         self.currAngle = [0 for i in range(lenData)]
         self.prevAngle = [0 for i in range(lenData)]
         self.mSpeed = [None for i in range(lenData)]
@@ -134,12 +136,20 @@ class SerialData():
         dataPacket = '1234|0'
         i = 0
         """
+        args = dataPacket.split('|')
+        if len(args) == 4:
+            print("This shouldn't happen yet!")
+            self.current[i], self.homing[i] = args[2:4]
+            self.current[i] = int(self.current[i])
+            #TODO: Add current[i] volt -> amp conversion
+            self.homing[i] = int(self.homing[i])
         self.totCount[i], self.rotDirCurr[i] = dataPacket.split('|')
         self.totCount[i] = int(self.totCount[i])
         self.rotDirCurr[i] = int(self.rotDirCurr[i])
         self.prevAngle[i] = self.currAngle[i]
         self.currAngle[i] = (self.totCount[i]/self.cpr[i]) * 2*np.pi
-    
+
+
     def CheckCommFault(self, i: int) -> bool:
         """Checks if data got corrupted using a maximum achievable 
         change in angle between two timesteps.
@@ -192,7 +202,7 @@ class SerialData():
                           portrayed in PWM [0, 255].
         :param mSpeedMin: Minimum rotational speed, 
                           portrayed in PWM [0, 255]."""
-        angleErr = self.desAngle[i] - abs(self.currAngle[i])
+        angleErr = abs(self.desAngle[i] - self.currAngle[i])
         self.mSpeed[i] = int(mSpeedMin + (angleErr/np.pi)* \
                              (mSpeedMax - mSpeedMin))
         if self.mSpeed[i] > mSpeedMax:
