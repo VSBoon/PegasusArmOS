@@ -23,9 +23,7 @@ int curr[nCommands] = {0};
 int homing[nCommands] = {0};
 char totCountBuff[nCommands][4];
 char rotDirBuff[nCommands][2];
-
 int dtComm = 10;
-int dtCurrBuff = 20;
 
 
 void setup() {
