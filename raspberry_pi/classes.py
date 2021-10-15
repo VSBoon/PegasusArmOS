@@ -80,28 +80,68 @@ class Robot():
                f"{self.links}\n GiList: {self.GiList}\n TllList: " +\
                f"{self.TllList}\n TsbHome: {self.TsbHome}"
 
-# class SpaceTraj():
-#     """A storage class for all trajectory information of a trajectory 
-#     in the space frame"""
-#     def __init__(self, traj: List[np.ndarray], trajVel: List[float], 
-#                  trajAcc: List[float], timeList: List[float], dT: int):
-#         self.trajSpace = traj
-#         self.trajVel = trajVel
-#         self.trajAcc = trajAcc
-#         self.timeList = timeList
-#         self.dT = dT
+class SerialData():
+    def __init__(self, lenData: int, cprList: List[int], desAngles: 
+                 List[float], maxDeltaAngle: List[float], 
+                 angleTol: List[float]) -> "SerialData":
+        self.lenData = lenData
+        self.cpr = cprList
+        self.desAngle = desAngles
+        self.totCount = [None for i in range(lenData)]
+        self.rotDirCurr = [None for i in range(lenData)]
+        self.currAngle = [0 for i in range(lenData)]
+        self.prevAngle = [0 for i in range(lenData)]
+        self.mSpeed = [None for i in range(lenData)]
+        self.rotDirDes = [None for i in range(lenData)]
+        self.dataOut = [None for i in range(lenData)]
+        self.maxDeltaAngle = maxDeltaAngle
+        self.angleTol = angleTol
 
-# class JointTraj():
-#     """A storage class for all trajectory information of a trajectory 
-#     in joint space"""
-#     def __init__(self, traj: List[float], trajVel: List[float], 
-#                 trajAcc: List[float], timeList: List[float], dT: int):
-#         self.traj = traj
-#         self.trajVel = trajVel
-#         self.trajAcc = trajAcc
-#         self.timeList = timeList
-#         self.dT = dT
+    def ExtractVars(self, dataPacket: str, i: int):
+        self.totCount[i], self.rotDirCurr[i] = dataPacket.split('|')
+        self.totCount[i] = int(self.totCount[i])
+        self.rotDirCurr[i] = int(self.rotDirCurr[i])
+        self.prevAngle[i] = self.currAngle[i]
+        self.currAngle[i] = (self.totCount[i]/self.cpr[i]) * 2*np.pi
+    
+    def CheckCommFault(self, i: int) -> bool:
+        """Known issue: If commFault occurs because maxDeltaAngle is 
+        too low, i.e. the encoder actually moved more than maxDelta-
+        Angle in one step, then the motor ceases to run because 
+        the condition will now always be True."""
+        commFault = False
+        if abs(self.prevAngle[i] - self.currAngle[i]) >= self.maxDeltaAngle[i]:
+            commFault = True
+            self.currAngle[i] = self.prevAngle[i]
+            self.mSpeed[i] = 0
+            self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
+        return commFault
+    
+    def CheckTolAng(self, i: int) -> bool:
+        success = False
+        if abs(self.currAngle[i] - self.desAngle[i]) <= self.angleTol[i]:
+            success = True
+            self.mSpeed[i] = 0
+            self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
+        return success
 
+    def GetDir(self, i: int):
+        if self.currAngle[i] <= self.desAngle[i] and \
+           self.rotDirCurr[i] != 0:
+            self.rotDirDes[i] = 0
+        elif self.currAngle[i] > self.desAngle[i] and self.rotDirCurr[i] != 1:
+            self.rotDirDes[i] = 1
+        else:
+            self.rotDirDes[i] = self.rotDirCurr[i]
+    
+    def PControl1(self, i: int, mSpeedMax: int, mSpeedMin: int):
+        angleErr = self.desAngle[i] - abs(self.currAngle[i])
+        self.mSpeed[i] = int(mSpeedMin + (angleErr/np.pi)* \
+                             (mSpeedMax - mSpeedMin))
+        if self.mSpeed[i] > mSpeedMax:
+            self.mSpeed[i] = mSpeedMax
+        elif self.mSpeed[i] < mSpeedMin:
+            self.mSpeed[i] = mSpeedMin
 
 ### ERROR CLASSES
 class IKAlgorithmError(BaseException):
@@ -120,6 +160,15 @@ class IKAlgorithmError(BaseException):
 class DimensionError(BaseException):
     """Custom error class if dimensions of two inputs do not add up 
     while they should.
+    """
+    def __init__(self, message: str = ""):
+        self.message = message
+    def __str__(self):
+        return self.message
+
+class InputError(BaseException):
+    """Custom error class if the data received over serial 
+    communication is invalid
     """
     def __init__(self, message: str = ""):
         self.message = message
