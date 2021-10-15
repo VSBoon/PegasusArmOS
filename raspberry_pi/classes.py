@@ -43,7 +43,8 @@ class Joint():
                           motor shaft and joint axes.
         :param lims: The joint limits, in the order [lower, upper].
         :param inSpace: Notes if the screw axis is in the space frame
-                        (True) or in the body frame (False)."""        
+                        (True) or in the body frame (False).
+        """        
         self.screwAx: np.ndarray = screwAx
         self.jointChild: Joint = jointChild
         self.lims: List[float] = lims
@@ -57,8 +58,19 @@ class Joint():
                f"\ninSpace: {self.inSpace}"  
 
 class Robot():
-    """Overarching robot class"""
+    """Overarching robot class, containing all joints & links 
+    described using their respective class instances.
+    """
     def __init__(self, joints: List[Joint], links: List[Link]):
+        """ Constructor for Robot class.
+        :param joints: A list of Joint objects, with the joints 
+                       being in ascending order from the joint 
+                       closest to the robot's connection with the 
+                       fixed world.
+        :param links: A list of Link objects, with the links being 
+                      in ascending order from the link closest to 
+                      the robot's connection to the fixed world.
+        """
         self.joints: List[Joint] = joints
         self.screwAxes: List[np.ndarray] = [joint.screwAx for joint in 
                                             joints]
@@ -80,28 +92,113 @@ class Robot():
                f"{self.links}\n GiList: {self.GiList}\n TllList: " +\
                f"{self.TllList}\n TsbHome: {self.TsbHome}"
 
-# class SpaceTraj():
-#     """A storage class for all trajectory information of a trajectory 
-#     in the space frame"""
-#     def __init__(self, traj: List[np.ndarray], trajVel: List[float], 
-#                  trajAcc: List[float], timeList: List[float], dT: int):
-#         self.trajSpace = traj
-#         self.trajVel = trajVel
-#         self.trajAcc = trajAcc
-#         self.timeList = timeList
-#         self.dT = dT
+class SerialData():
+    """Container class containing all relevant information and functions
+    for parsing and acting on data received over serial communication."""
+    def __init__(self, lenData: int, cprList: List[int], desAngles: 
+                 List[float], maxDeltaAngle: List[float], 
+                 angleTol: List[float]) -> "SerialData":
+        """Constructor for SerialData class.
+        :param lenData: The expected number of data packets (equal to
+                        number of motor units).
+        :param cprList: List of counts per revolution of each encoder.
+        :param desAngles: List of desired angles for each motor, in 
+                          radians (for position control).
+        :param maxDeltaAngle: Maximum change in each joint angle 
+                              between two received data packets (anti-
+                              corruption check).
+        :param angleTol: Tolerance of each desired joint angle in 
+                         radians.
+        """
+        self.lenData = lenData
+        self.cpr = cprList
+        self.desAngle = desAngles
+        self.totCount = [None for i in range(lenData)]
+        self.rotDirCurr = [None for i in range(lenData)]
+        self.currAngle = [0 for i in range(lenData)]
+        self.prevAngle = [0 for i in range(lenData)]
+        self.mSpeed = [None for i in range(lenData)]
+        self.rotDirDes = [None for i in range(lenData)]
+        self.dataOut = [None for i in range(lenData)]
+        self.maxDeltaAngle = maxDeltaAngle
+        self.angleTol = angleTol
 
-# class JointTraj():
-#     """A storage class for all trajectory information of a trajectory 
-#     in joint space"""
-#     def __init__(self, traj: List[float], trajVel: List[float], 
-#                 trajAcc: List[float], timeList: List[float], dT: int):
-#         self.traj = traj
-#         self.trajVel = trajVel
-#         self.trajAcc = trajAcc
-#         self.timeList = timeList
-#         self.dT = dT
+    def ExtractVars(self, dataPacket: str, i: int):
+        """Extracts & translates information in each datapacket.
+        :param dataPacket: A string of the form 'totCount|rotDirCurr',
+                           where totCount is an integer and rotDirCurr
+                           a boolean (0 or 1).
+        :param i: Current iterator number in the main loop.
+        
+        Example input:
+        dataPacket = '1234|0'
+        i = 0
+        """
+        self.totCount[i], self.rotDirCurr[i] = dataPacket.split('|')
+        self.totCount[i] = int(self.totCount[i])
+        self.rotDirCurr[i] = int(self.rotDirCurr[i])
+        self.prevAngle[i] = self.currAngle[i]
+        self.currAngle[i] = (self.totCount[i]/self.cpr[i]) * 2*np.pi
+    
+    def CheckCommFault(self, i: int) -> bool:
+        """Checks if data got corrupted using a maximum achievable 
+        change in angle between two timesteps.
+        :param i: Current iterator number in the main loop.
+        :return commFault: Boolean indicating if new angle is 
+                           reasonable (False) or not (True).
+        
+        Known issue: If commFault occurs because maxDeltaAngle is 
+        too low, i.e. the encoder actually moved more than maxDelta-
+        Angle in one step, then the motor ceases to run because 
+        the condition will now always be True.
+        """
+        commFault = False
+        if abs(self.prevAngle[i] - self.currAngle[i]) >= self.maxDeltaAngle[i]:
+            commFault = True
+            self.currAngle[i] = self.prevAngle[i]
+            self.mSpeed[i] = 0
+            self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
+        return commFault
+    
+    def CheckTolAng(self, i: int) -> bool:
+        """Determines if the desired angle has been reached within the 
+        given tolerance.
+        :param i: Iteration number of the main loop.
+        :return success: Indicates if the angle is within the 
+        tolerance of the goal angle (True) or not (False).
+        """
+        success = False
+        if abs(self.currAngle[i] - self.desAngle[i]) <= self.angleTol[i]:
+            success = True
+            self.mSpeed[i] = 0
+            self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
+        return success
 
+    def GetDir(self, i: int):
+        """Gives the desired direction of rotation.
+        :param i: Iteration number of teh main loop."""
+        if self.currAngle[i] <= self.desAngle[i] and \
+           self.rotDirCurr[i] != 0:
+            self.rotDirDes[i] = 0
+        elif self.currAngle[i] > self.desAngle[i] and self.rotDirCurr[i] != 1:
+            self.rotDirDes[i] = 1
+        else:
+            self.rotDirDes[i] = self.rotDirCurr[i]
+    
+    def PControl1(self, i: int, mSpeedMax: int, mSpeedMin: int):
+        """Gives motor speed commands proportional to the angle error.
+        :param i: Iteration number in the main loop.
+        :param mSpeedMax: Maximum rotational speed, 
+                          portrayed in PWM [0, 255].
+        :param mSpeedMin: Minimum rotational speed, 
+                          portrayed in PWM [0, 255]."""
+        angleErr = self.desAngle[i] - abs(self.currAngle[i])
+        self.mSpeed[i] = int(mSpeedMin + (angleErr/np.pi)* \
+                             (mSpeedMax - mSpeedMin))
+        if self.mSpeed[i] > mSpeedMax:
+            self.mSpeed[i] = mSpeedMax
+        elif self.mSpeed[i] < mSpeedMin:
+            self.mSpeed[i] = mSpeedMin
 
 ### ERROR CLASSES
 class IKAlgorithmError(BaseException):
@@ -120,6 +217,15 @@ class IKAlgorithmError(BaseException):
 class DimensionError(BaseException):
     """Custom error class if dimensions of two inputs do not add up 
     while they should.
+    """
+    def __init__(self, message: str = ""):
+        self.message = message
+    def __str__(self):
+        return self.message
+
+class InputError(BaseException):
+    """Custom error class if the data received over serial 
+    communication is invalid.
     """
     def __init__(self, message: str = ""):
         self.message = message
