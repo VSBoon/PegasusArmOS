@@ -1,45 +1,56 @@
 #include <elapsedMillis.h>
 elapsedMillis commTimer;
-/** A test for serial USB communication between the Arduino Uno R3
- *  and the Raspberry Pi Model 3b+. 
+elapsedMillis senseTimer;
+/*  This code is to be used with the 'serial_comm.py' code
+ *  (or its derivatives) of the PegasusArmOS repository.
+ *  Allows data manipulation on the main microcontroller,
+ *  while the local microcontroller captures & sends data
+ *  as quickly as possible.
  *  Written by: Vincent Sebastiaan Boon (v_s_boon@live.nl)
- *  Date: 21-09-2021
-*/
-//TODO: Docstrings
+ *  Date: 18-10-2021
+ */
 String command;
 const int nCommands = 5; //Number of seperate groups of data.
-long mSpeed[nCommands];
+int mSpeed[nCommands];
 int rotCCW[nCommands];
-
-const byte mSpeedPin = 5;
+const byte homePin1 = 8;
+const byte currPin1 = 14; //A0
+const byte mSpeedPin1 = 5;
 const byte m1a = 7;
 const byte m1b = 6;
 const byte e1a = 2;
 const byte e1b = 3;
 
-int totCount[nCommands] = {0};
+long totCount[nCommands] = {0};
 int rotDir[nCommands] = {0};
 int curr[nCommands] = {0};
 int homing[nCommands] = {0};
 char totCountBuff[nCommands][4];
 char rotDirBuff[nCommands][2];
-int dtComm = 10;
+char homingBuff[nCommands][2];
+char currBuff[nCommands][5];
+
+int dtComm = 4; //Make sure this aligns with dtComm in Python code!
+int dtCurrHome = 20;
 
 
 void setup() {
   Serial.begin(115200);
+  pinMode(currPin1, INPUT_PULLUP);
+  pinMode(homePin1, INPUT_PULLUP);
   pinMode(e1a, INPUT_PULLUP);
   pinMode(e1b, INPUT_PULLUP);
-  pinMode(mSpeedPin, OUTPUT);
-  pinMode(m1a, OUTPUT);
-  pinMode(m1b, OUTPUT);
   attachInterrupt(digitalPinToInterrupt(e1a), ReadE1a, CHANGE);
   attachInterrupt(digitalPinToInterrupt(e1b), ReadE1b, CHANGE);
+  pinMode(mSpeedPin1, OUTPUT);
+  pinMode(m1a, OUTPUT);
+  pinMode(m1b, OUTPUT);
+
 }
 
 void loop() {
   serialReadAndParse();
-  analogWrite(mSpeedPin, mSpeed[0]);
+  analogWrite(mSpeedPin1, mSpeed[0]);
   if (rotDir[0] != rotCCW[0] && rotCCW[0] == 0) {
     digitalWrite(m1a, LOW);
     digitalWrite(m1b, HIGH);
@@ -48,16 +59,29 @@ void loop() {
     digitalWrite(m1a, HIGH);
     digitalWrite(m1b, LOW);
   }
+  if (senseTimer > dtCurrHome) {
+    //Read homing & curr sensor
+    //TO BE CHANGED INTO FOR LOOP WHEN ALL PINS ARE KNOWN
+    curr[0] = analogRead(currPin1);
+    homing[0] = digitalRead(homePin1);
+    senseTimer = 0;
+  }
   if (commTimer > dtComm) {
     //Send data to Raspberry Pi
     if (Serial.availableForWrite()) {
       for(int i = 0; i < nCommands; i++) {
         itoa(totCount[i], totCountBuff[i], 10);
         itoa(rotDir[i], rotDirBuff[i], 10);
+        itoa(curr[i], currBuff[i], 10);
+        itoa(homing[i], homingBuff[i], 10);
         Serial.write('[');
         Serial.write(totCountBuff[i]);
         Serial.write('|');
         Serial.write(rotDirBuff[i]);
+        Serial.write('|');
+        Serial.write(currBuff[i]);
+        Serial.write('|');
+        Serial.write(homingBuff[i]);
         Serial.write(']');
       }
       Serial.write('\r');
@@ -87,6 +111,9 @@ void parseCommand(String com) {
 }
 
 void serialReadAndParse() {
+  /* Checks for new data in the serial buffer until an end-of-line character.
+   * Consequently parses it using the parseCommand() function.
+   */
   if(Serial.available() > 0) {
     char c = Serial.read();
     if(c == '\n') {
@@ -100,6 +127,10 @@ void serialReadAndParse() {
   }
 }
 
+/* Encoder functions change the total encoder count if the interrupt pin
+ *  for an encoder sensor is triggered, based on the direction of 
+ *  rotation, which is determined by use of quadrature encoder boolean logic.
+ */
 void ReadE1a() {
   rotDir[0] = digitalRead(e1a) == digitalRead(e1b);
   if (!rotDir[0]) {
