@@ -3,8 +3,8 @@ import modern_robotics as mr
 from typing import List
 
 class Link():
-    def __init__(self, inertiaMat: np.ndarray, mass: float, joints: 
-                 List['Joint'], Tsi: np.ndarray):
+    def __init__(self, inertiaMat: np.ndarray, mass: float, prevLink: 'Link',
+                 Tsi: np.ndarray):
         """Constructer for Link class.
         :param inertiaMat: The 3x3 inertia matrix of the link with 
                            respect to the link frame. If the axes of 
@@ -12,17 +12,20 @@ class Link():
                            axes of inertia, this matrix simplifies to 
                            a diagonal matrix.
         :param mass: The mass of the link in kg.
-        :param joints: The joints that the link connects, in the order 
-                       [closer to base, closer to end-effector]. For 
-                       the end-effector, the second joint is None.
+        :param prevLink: Previous link in the chain.
         :param Tsi: The 4x4 SE(3) transformation matrix of the link
                     frame {i} in the space frame {s}.
         """
         self.Gi: np.ndarray = np.zeros((6,6)) #6x6 spatial inertia matrix
         self.Gi[0:3,0:3] = inertiaMat
         self.Gi[3:6, 3:6] = np.diag([mass]*3, k=0)
-        self.joints: List['Joint'] = joints
         self.Tsi: np.ndarray = Tsi
+        """Tii is the transformation matrix from current 
+        link frame {i} to previous link frame {i-1}:"""
+        if prevLink == None:
+            self.Tii = self.Tsi
+        else:
+            self.Tii: np.ndarray = np.dot(mr.TransInv(prevLink.Tsi), Tsi)
     
     def __repr__(self):
         return f"Link(Gi: {self.Gi}\nJoints: {self.joints}\nTsi: {self.Tsi})"
@@ -31,24 +34,24 @@ class Joint():
     """A storage class combining all the information relevant to joint
     calculations."""
     def __init__(self, screwAx: np.ndarray, links: List[Link], gearRatio: 
-                 float, jointChild: 'Joint' = None, lims: List[float] = 
-                 [-2*np.pi, 2*np.pi], inSpace: bool = True):
+                 float, cpr: int, lims: List[float] = [-2*np.pi, 2*np.pi], 
+                 inSpace: bool = True):
         """Constructor for Joint class.
         :param screwAx: A 6x1 screw axis in the home configuration, per 
         Definition 3.24 of the Modern Robotics book.
         :param links: Connecting links, in the order [prev, next].
-        :param jointChild: Joint n+1, which is one link closer to the 
-                            end-effector than the current join, n.
         :param gearRatio: The reduction ratio 1:gearRatio between the
                           motor shaft and joint axes.
+        :param cpr: Counts per revolution of the encoder shaft.
         :param lims: The joint limits, in the order [lower, upper].
         :param inSpace: Notes if the screw axis is in the space frame
                         (True) or in the body frame (False).
         """        
         self.screwAx: np.ndarray = screwAx
-        self.jointChild: Joint = jointChild
         self.lims: List[float] = lims
         self.gearRatio = gearRatio
+        self.cpr = cpr
+        self.enc2Theta = 1/(cpr*gearRatio) * 2*np.pi
         self.links: List[Link] = links
         self.inSpace: bool = inSpace
     
@@ -78,12 +81,7 @@ class Robot():
         self.links: List[Link] = links
         self.GiList: List[np.ndarray] = [link.Gi for link in links]
         
-        self.TllList: List[np.ndarray] = []
-        for i in range(len(1,self.links)):
-            #Transformation matrix of link {i} in link {i-1}
-            Tll = np.dot(mr.TransInv(self.links[i-1].Tsi), 
-                         self.links[i].Tsi) 
-            self.TllList[i-1] = Tll
+        self.TllList: List[np.ndarray] = [link.Tii for link in links]
         self.TsbHome: np.ndarray = self.TllList[-1]
     
     def __repr__(self):
@@ -95,65 +93,71 @@ class Robot():
 class SerialData():
     """Container class containing all relevant information and functions
     for parsing and acting on data received over serial communication."""
-    def __init__(self, lenData: int, cprList: List[int], desAngles: 
+    def __init__(self, lenData: int, desAngles: 
                  List[float], maxDeltaAngle: List[float], 
-                 angleTol: List[float]) -> "SerialData":
+                 angleTol: List[float], joints: List[Joint]) -> "SerialData":
         """Constructor for SerialData class.
         :param lenData: The expected number of data packets (equal to
                         number of motor units).
-        :param cprList: List of counts per revolution of each encoder.
         :param desAngles: List of desired angles for each motor, in 
                           radians (for position control).
         :param maxDeltaAngle: Maximum change in each joint angle 
                               between two received data packets (anti-
                               corruption check).
+        :param joints: List of all Joint instances of the robot.
         :param angleTol: Tolerance of each desired joint angle in 
                          radians.
         """
         self.lenData = lenData
-        self.cpr = cprList
         self.desAngle = desAngles
-        self.totCount = [None for i in range(lenData)]
+        self.joints = joints
+        if len(joints) != lenData:
+            msg = "Number of joints does not match length of data: "+\
+                  f"({len(joints)}, {lenData})"
+            raise DimensionError(msg)
+        self.totCount = [0 for i in range(lenData)]
         self.rotDirCurr = [None for i in range(lenData)]
         self.current = [None for i in range(lenData)]
         self.homing = [None for i in range(lenData)]
         self.currAngle = [0 for i in range(lenData)]
         self.prevAngle = [0 for i in range(lenData)]
-        self.mSpeed = [None for i in range(lenData)]
+        self.mSpeed = [0 for i in range(lenData)]
         self.rotDirDes = [None for i in range(lenData)]
         self.dataOut = [None for i in range(lenData)]
         self.maxDeltaAngle = maxDeltaAngle
         self.angleTol = angleTol
 
-    def ExtractVars(self, dataPacket: str, i: int):
+    def ExtractVars(self, dataPacket: List[str]):
         """Extracts & translates information in each datapacket.
         :param dataPacket: A string of the form 'totCount|rotDirCurr',
                            where totCount is an integer and rotDirCurr
                            a boolean (0 or 1).
-        :param i: Current iterator number in the main loop.
         
         Example input:
         dataPacket = '1234|0'
-        i = 0
         """
-        args = dataPacket.split('|')
-        if len(args) == 4:
-            print("This shouldn't happen yet!")
-            self.current[i], self.homing[i] = args[2:4]
-            self.current[i] = int(self.current[i])
-            #TODO: Add current[i] volt -> amp conversion
-            self.homing[i] = int(self.homing[i])
-        self.totCount[i], self.rotDirCurr[i] = dataPacket.split('|')
-        self.totCount[i] = int(self.totCount[i])
-        self.rotDirCurr[i] = int(self.rotDirCurr[i])
-        self.prevAngle[i] = self.currAngle[i]
-        self.currAngle[i] = (self.totCount[i]/self.cpr[i]) * 2*np.pi
+        for i in range(self.lenData):
+            args = dataPacket[i].split('|')
+            if len(args) == 4:
+                self.current[i], self.homing[i] = args[2:4]
+                self.current[i] = int(self.current[i])
+                #TODO: Add current[i] volt -> amp conversion
+                self.homing[i] = int(self.homing[i])
+            self.totCount[i], self.rotDirCurr[i] = args[0:2]
+            self.totCount[i] = int(self.totCount[i])
+            self.rotDirCurr[i] = int(self.rotDirCurr[i])
+            self.prevAngle[i] = self.currAngle[i]
+            self.currAngle[i] = self.totCount[i] * self.joints[i].enc2Theta
+            if i == 3 or i == 4:
+                """Due to the unique mechanics of the robot, the 
+                encoder only measures the absolute angle of 3 or 4, 
+                not relative to 2 or 3, respectively."""
+                self.currAngle[i] -= self.currAngle[i-1] 
 
 
-    def CheckCommFault(self, i: int) -> bool:
+    def CheckCommFault(self) -> bool:
         """Checks if data got corrupted using a maximum achievable 
         change in angle between two timesteps.
-        :param i: Current iterator number in the main loop.
         :return commFault: Boolean indicating if new angle is 
                            reasonable (False) or not (True).
         
@@ -162,49 +166,57 @@ class SerialData():
         Angle in one step, then the motor ceases to run because 
         the condition will now always be True.
         """
-        commFault = False
-        if abs(self.prevAngle[i] - self.currAngle[i]) >= self.maxDeltaAngle[i]:
-            commFault = True
-            self.currAngle[i] = self.prevAngle[i]
-            self.mSpeed[i] = 0
-            self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
+        commFault = [False for i in range(self.lenData)]
+        for i in range(self.lenData):
+            if abs(self.prevAngle[i] - self.currAngle[i]) >= self.maxDeltaAngle[i]:
+                print(f"prev: {self.prevAngle[i]}, curr: {self.currAngle[i]}, {self.maxDeltaAngle[i]}") #DEBUG
+                commFault[i] = True
+                self.currAngle[i] = self.prevAngle[i]
+                self.mSpeed[i] = 0
+                self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
         return commFault
     
-    def CheckTolAng(self, i: int) -> bool:
+    def CheckTolAng(self) -> bool:
         """Determines if the desired angle has been reached within the 
-        given tolerance.
-        :param i: Iteration number of the main loop.
+        given tolerance, and if the desired angle is reachable.
+        If the desired angle is unreachable, the closest angle is chosen.
         :return success: Indicates if the angle is within the 
         tolerance of the goal angle (True) or not (False).
         """
-        success = False
-        if abs(self.currAngle[i] - self.desAngle[i]) <= self.angleTol[i]:
-            success = True
-            self.mSpeed[i] = 0
-            self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
+        success = [False for i in range(self.lenData)]
+        for i in range(self.lenData):
+            if self.desAngle[i] < self.joints[i].lims[0]:
+                self.desAngle[i] = self.joints[i].lims[0]
+            elif self.desAngle[i] > self.joints[i].lims[1]:
+                self.desAngle[i] = self.joints[i].lims[1] 
+            if abs(self.currAngle[i] - self.desAngle[i]) <= self.angleTol[i]:
+                success[i] = True
+                self.mSpeed[i] = 0
+                self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
         return success
 
-    def GetDir(self, i: int):
-        """Gives the desired direction of rotation.
-        :param i: Iteration number of teh main loop."""
-        if self.currAngle[i] <= self.desAngle[i] and \
-           self.rotDirCurr[i] != 0:
-            self.rotDirDes[i] = 0
-        elif self.currAngle[i] > self.desAngle[i] and self.rotDirCurr[i] != 1:
-            self.rotDirDes[i] = 1
-        else:
-            self.rotDirDes[i] = self.rotDirCurr[i]
+    def GetDir(self):
+        """Gives the desired direction of rotation
+        """
+        for i in range(self.lenData):
+            if self.currAngle[i] <= self.desAngle[i] and \
+            self.rotDirCurr[i] != 0:
+                self.rotDirDes[i] = 0
+            elif self.currAngle[i] > self.desAngle[i] and self.rotDirCurr[i] != 1:
+                self.rotDirDes[i] = 1
+            else:
+                self.rotDirDes[i] = self.rotDirCurr[i]
     
     def PControl1(self, i: int, mSpeedMax: int, mSpeedMin: int):
         """Gives motor speed commands proportional to the angle error.
-        :param i: Iteration number in the main loop.
+        :param i: Current iteration number.
         :param mSpeedMax: Maximum rotational speed, 
                           portrayed in PWM [0, 255].
         :param mSpeedMin: Minimum rotational speed, 
                           portrayed in PWM [0, 255]."""
         angleErr = abs(self.desAngle[i] - self.currAngle[i])
-        self.mSpeed[i] = int(mSpeedMin + (angleErr/np.pi)* \
-                             (mSpeedMax - mSpeedMin))
+        self.mSpeed[i] = int(mSpeedMin + (angleErr/(10*np.pi))* \
+                            (mSpeedMax - mSpeedMin))
         if self.mSpeed[i] > mSpeedMax:
             self.mSpeed[i] = mSpeedMax
         elif self.mSpeed[i] < mSpeedMin:
