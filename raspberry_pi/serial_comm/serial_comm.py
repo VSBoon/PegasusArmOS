@@ -1,5 +1,11 @@
+import os
 import sys
-sys.path.append('C:\\DeKUT_Internship\\Robot_Arm\\PegasusArmOS\\raspberry_pi\\')
+#Find directory path of current file
+current = os.path.dirname(os.path.realpath(__file__))
+#Find directory path of parent folder and add to sys path
+parent = os.path.dirname(current)
+sys.path.append(parent)
+
 from classes import SerialData, InputError, Joint, Link, Robot
 from typing import List, Tuple
 from trajectory_generation.traj_gen import TrajGen, TrajDerivatives
@@ -9,19 +15,34 @@ import time
 import numpy as np
 
 #TODO: Docstrings, examples, & tests.
-def FindSerial() -> str:
+def FindSerial(askInput=False) -> str:
     """Finds the Serial port to which the Arduino / Teensy is connected
+    :param askInput: If multiple connections are found, 
+                     ask the user to choose.
     :return port: The string representation of the port.
     :return warning: Boolean indicating a warning has been printed."""
     warning = False
     port = [p.device for p in serial.tools.list_ports.comports()
-            if 'Arduino' or 'PJRC' in p.manufacturer]
+            if 'Arduino' in p.manufacturer or 'Teensy' in p[1]]
     if not port:
-        raise IOError("No Arduino found!")
+        raise IOError("No microcontroller found!")
     elif len(port) > 1:
-        print("Multiple Arduinos connected: Using first one in list.")
+        print("Multiple micrcontrollers connected: ")
+        if askInput:
+            portIndex = input("Please choose the index (starting from 0)" + 
+                              f"from the following list: {port}")
+            try:
+                port = port[portIndex]
+            except:
+                print("Invalid index, taking first port.")
+                port = port[0]
+        else:
+            print(f"Taking first port ({port[0]})")
+            port = port[0]
         warning = True
-    return port[0], warning
+    else:
+        port = port[0]
+    return port, warning
 
 def StartComms(comPort: str, baudRate: int = 115200) -> serial.Serial:
     """Intantiates a serial connection with a microcontroller over USB.
@@ -82,6 +103,7 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
                          new data.
     
     Example input:
+    baudRate = 115200
     lenData = 6 #Number of motors
     cprList = [4320 for i in range(lenData)]
     desAngles = [3*np.pi for i in range(lenData)]
@@ -91,11 +113,13 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
     dtComm = 0.005
     localMu = StartComms("COM9", baudRate)
     encAlg = "utf-8"
+    lastCheckOld = time.time()
 
     Example output:
     1634299822.1247501, True
     """
     controlBool = False
+    lastCheck = time.time()
     elapsedTime = time.time() - lastCheckOld
     if elapsedTime >= dtComm:
         if localMu.inWaiting() == 0:
@@ -106,10 +130,10 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
             except InputError as e:
                 print(str(e))
                 localMu.reset_input_buffer()
-                return lastCheckOld, controlBool
+                return lastCheck, controlBool
             except UnicodeDecodeError as e:
                 localMu.reset_input_buffer()
-                return lastCheckOld, controlBool
+                return lastCheck, controlBool
             controlBool = True #Control after final parsing
             dataPacket = dataIn[1:-1].split('][')
             if len(dataPacket) != SPData.lenData: #flush & retry
@@ -124,6 +148,7 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
         return lastCheckOld, controlBool
     return lastCheck, controlBool
 
+#Proof-of-concept function: No tests available
 def SetPointControl1(SPData: SerialData, localMu: serial.Serial, 
                     mSpeedMax: int = 255, mSpeedMin: int = 150, 
                     encAlg: str = "utf-8"):
