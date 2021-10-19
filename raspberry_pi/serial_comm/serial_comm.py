@@ -10,12 +10,12 @@ import numpy as np
 
 #TODO: Docstrings, examples, & tests.
 def FindSerial() -> str:
-    """Finds the Serial port to which the Arduino is connected
+    """Finds the Serial port to which the Arduino / Teensy is connected
     :return port: The string representation of the port.
     :return warning: Boolean indicating a warning has been printed."""
     warning = False
     port = [p.device for p in serial.tools.list_ports.comports()
-            if 'Arduino' in p.manufacturer]
+            if 'Arduino' or 'PJRC' in p.manufacturer]
     if not port:
         raise IOError("No Arduino found!")
     elif len(port) > 1:
