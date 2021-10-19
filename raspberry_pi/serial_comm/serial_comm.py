@@ -22,8 +22,12 @@ def FindSerial(askInput=False) -> str:
     :return port: The string representation of the port.
     :return warning: Boolean indicating a warning has been printed."""
     warning = False
-    port = [p.device for p in serial.tools.list_ports.comports()
-            if 'Arduino' in p.manufacturer or 'Teensy' in p[1]]
+    comports = serial.tools.list_ports.comports()
+    port = []
+    for p in comports:
+        if p.manufacturer:
+            if 'Arduino' in p.manufacturer or 'Teensy' in p.manufacturer:
+                port.append(p.device)
     if not port:
         raise IOError("No microcontroller found!")
     elif len(port) > 1:
