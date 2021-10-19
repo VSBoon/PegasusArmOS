@@ -4,11 +4,26 @@ from classes import SerialData, InputError, Joint, Link, Robot
 from typing import List, Tuple
 from trajectory_generation.traj_gen import TrajGen, TrajDerivatives
 import serial
+import serial.tools.list_ports
 import time
 import numpy as np
 
 #TODO: Docstrings, examples, & tests.
-def startComms(comPort: str, baudRate: int = 115200) -> serial.Serial:
+def FindSerial() -> str:
+    """Finds the Serial port to which the Arduino is connected
+    :return port: The string representation of the port.
+    :return warning: Boolean indicating a warning has been printed."""
+    warning = False
+    port = [p.device for p in serial.tools.list_ports.comports()
+            if 'Arduino' in p.manufacturer]
+    if not port:
+        raise IOError("No Arduino found!")
+    elif len(port) > 1:
+        print("Multiple Arduinos connected: Using first one in list.")
+        warning = True
+    return port[0], warning
+
+def StartComms(comPort: str, baudRate: int = 115200) -> serial.Serial:
     """Intantiates a serial connection with a microcontroller over USB.
     :param comPort: The address of the communication port to which the 
                     local microcontroller is connected.
@@ -29,7 +44,7 @@ def startComms(comPort: str, baudRate: int = 115200) -> serial.Serial:
         print(f"{localMu.port} connected!")
     return localMu
 
-def getComms(localMu: serial.Serial, encAlg: str = "utf-8") -> str:
+def GetComms(localMu: serial.Serial, encAlg: str = "utf-8") -> str:
     """Reads and decodes incoming byte data over a serial connection.
     :param localMu: A serial.Serial() instance representing the serial
                     communication to the local microcontroller.
@@ -38,7 +53,7 @@ def getComms(localMu: serial.Serial, encAlg: str = "utf-8") -> str:
     :return dataIn: String of decoded bytes available in the serial buffer 
                     until the representation of the newline character.
     Example input:
-    localMu = startComms("COM9", baudRate=115200)
+    localMu = StartComms("COM9", baudRate=115200)
     encalg = "utf-8"
     Output:
     "This is an example of information sent over the serial port."
@@ -74,7 +89,7 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
     tolAngle = [0.04*np.pi for i in range(lenData)]
     SPData = SerialData(lenData, cprList, desAngles, maxDeltaAngles, tolAngle)
     dtComm = 0.005
-    localMu = startComms("COM9", baudRate)
+    localMu = StartComms("COM9", baudRate)
     encAlg = "utf-8"
 
     Example output:
@@ -87,7 +102,7 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
             return lastCheck, controlBool
         elif localMu.inWaiting() > 0:
             try:
-                dataIn = getComms(localMu, encAlg)
+                dataIn = GetComms(localMu, encAlg)
             except InputError as e:
                 print(str(e))
                 localMu.reset_input_buffer()
@@ -130,7 +145,7 @@ def SetPointControl1(SPData: SerialData, localMu: serial.Serial,
     tolAngle = [0.02*np.pi for i in range(lenData)]
     SPData = SerialData(lenData, cprList, desAngles, maxDeltaAngles, 
                         tolAngle)
-    localMu = startComms("COM9", 115200)
+    localMu = StartComms("COM9", 115200)
     mSpeedMax = 200
     mSpeedMin = 150
     encAlg = "utf-8"
@@ -212,7 +227,8 @@ if __name__ == "__main__":
     tolAngle = [0.02*np.pi for i in range(lenData)]
     SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngle, Pegasus.joints)
     dtComm = 0.004
-    localMu = startComms("COM9", baudRate)
+    port, warning = FindSerial()
+    localMu = StartComms(port, baudRate)
     mSpeedMax = 200
     mSpeedMin = 110
     encAlg = "utf-8"
