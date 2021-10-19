@@ -10,14 +10,15 @@ from serial_comm import FindSerial, StartComms, GetComms, SReadAndParse, SetPoin
 from classes import SerialData, InputError
 
 """Trying to do multiple test cases for FindSerial() is difficult, 
-since all are run in one go, and the Arduino cannot be connected and 
-disconnected simultaneously. Therefore, uncomment the test that can be 
-done and iterate through them.
+since all are run in one go, and the microcontroller cannot be 
+connected and disconnected simultaneously. Therefore, uncomment the 
+test that can be done and iterate through them.
+TODO: Test with Teensy!
 """
 
 # def test_FindSerialNoPort():
-#     """Test to see if an IOError gets raised when no Arduino is 
-#     connected.
+#     """Test to see if an IOError gets raised when no 
+#     microController is connected.
 #     """
 #     try:
 #         FindSerial()
@@ -25,7 +26,7 @@ done and iterate through them.
 #         assert True
 
 
-# def test_FindSerial1ArdWindows():
+# def test_FindSerial1Windows():
 #     """Check if the serial port is found on a Windows PC: 
 #     edit knownPort before testing!
 #     """
@@ -33,7 +34,7 @@ done and iterate through them.
 #     port = FindSerial()[0]
 #     assert port == knownPort
 
-# def test_FindSerial1ArdLinux():
+# def test_FindSerial1Linux():
 #     """Check if the serial port is found on a Linux PC: 
 #     edit knownPort before testing!
 #     """
@@ -41,8 +42,8 @@ done and iterate through them.
 #     port = FindSerial()[0]
 #     assert port == knownPort
 
-# def test_FindSerial2Ard():
-#     """Check if the user is warned bout multiple Arduinos being 
+# def test_FindSerial2():
+#     """Check if the user is warned about multiple controllers being 
 #     connected.
 #     """
 #     port, warning = FindSerial()
