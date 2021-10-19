@@ -1,5 +1,11 @@
+import os
 import sys
-sys.path.append('C:\\DeKUT_Internship\\Robot_Arm\\PegasusArmOS\\raspberry_pi\\')
+#Find directory path of current file
+current = os.path.dirname(os.path.realpath(__file__))
+#Find directory path of parent folder and add to sys path
+parent = os.path.dirname(current)
+sys.path.append(parent)
+
 from kinematic_funcs import FKSpace, IKSpace
 from util import ThetaInitGuess
 from classes import Joint, IKAlgorithmError

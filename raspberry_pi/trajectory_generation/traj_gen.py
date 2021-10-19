@@ -1,5 +1,11 @@
+import os
 import sys
-sys.path.append('C:\\DeKUT_Internship\\Robot_Arm\\PegasusArmOS\\raspberry_pi\\')
+#Find directory path of current file
+current = os.path.dirname(os.path.realpath(__file__))
+#Find directory path of parent folder and add to sys path
+parent = os.path.dirname(current)
+sys.path.append(parent)
+
 from classes import Robot, Joint, Link, DimensionError
 from kinematics.kinematic_funcs import IKSpace
 import modern_robotics as mr
@@ -160,15 +166,16 @@ if __name__ == "__main__":
     lims3 = [-np.pi, 0.25*np.pi] #-180 deg, +45 deg.
     lims4 = [-np.pi, np.pi] #+/- 180 deg.
     gearRatioList = [19.7*50, 19.7*50, (65.5*20)/9, (65.5*20)/9, (127.7*32)/9]
+    cpr = 512
     L0 = Link(iMat0, massList[0], None, Tsi0)
     L1 = Link(iMat1, massList[1], L0, Tsi1)
     L2 = Link(iMat2, massList[2], L1, Tsi2)
     L34 = Link(iMat34, massList[3], L2, Tsi34)
-    J0 = Joint(S0, [None, L0], gearRatioList[0], lims0)
-    J1 = Joint(S1, [L0, L1], gearRatioList[1], lims1)
-    J2 = Joint(S2, [L1, L2], gearRatioList[2], lims2)
-    J3 = Joint(S3, [L2,34], gearRatioList[3], lims3)
-    J4 = Joint(S4, [L2,L34], gearRatioList[4], lims4)
+    J0 = Joint(S0, [None, L0], gearRatioList[0], cpr, lims0)
+    J1 = Joint(S1, [L0, L1], gearRatioList[1], cpr, lims1)
+    J2 = Joint(S2, [L1, L2], gearRatioList[2], cpr, lims2)
+    J3 = Joint(S3, [L2,34], gearRatioList[3], cpr, lims3)
+    J4 = Joint(S4, [L2,L34], gearRatioList[4], cpr, lims4)
     Pegasus = Robot([J0, J1, J2, J3, J4], [L0, L1, L2, L34])
     startConfig = [0,0,0,0,0]
     endConfig = [0.5*np.pi, 0.2*np.pi, 0.1*np.pi, 0.3*np.pi, 0.4*np.pi]

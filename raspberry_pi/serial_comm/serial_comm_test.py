@@ -1,3 +1,11 @@
+import os
+import sys
+#Find directory path of current file
+current = os.path.dirname(os.path.realpath(__file__))
+#Find directory path of parent folder and add to sys path
+parent = os.path.dirname(current)
+sys.path.append(parent)
+
 from serial_comm import FindSerial, StartComms, GetComms, SReadAndParse, SetPointControl1
 from classes import SerialData, InputError
 
@@ -17,13 +25,13 @@ done and iterate through them.
 #         assert True
 
 
-def test_FindSerial1ArdWindows():
-    """Check if the serial port is found on a Windows PC: 
-    edit knownPort before testing!
-    """
-    knownPort = 'COM11'
-    port = FindSerial()[0]
-    assert port == knownPort
+# def test_FindSerial1ArdWindows():
+#     """Check if the serial port is found on a Windows PC: 
+#     edit knownPort before testing!
+#     """
+#     knownPort = 'COM11'
+#     port = FindSerial()[0]
+#     assert port == knownPort
 
 # def test_FindSerial1ArdLinux():
 #     """Check if the serial port is found on a Linux PC: 

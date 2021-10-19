@@ -1,5 +1,12 @@
+import os
+import sys
+#Find directory path of current file
+current = os.path.dirname(os.path.realpath(__file__))
+#Find directory path of parent folder and add to sys path
+parent = os.path.dirname(current)
+sys.path.append(parent)
+
 import numpy as np
-import unittest
 from traj_gen import TrajGen
 sConfigJoint = [0, 0, 0, 0, 0]
 fConfigJoint = [0.5, 0.4, 0.3, 0.2, 0.1]
