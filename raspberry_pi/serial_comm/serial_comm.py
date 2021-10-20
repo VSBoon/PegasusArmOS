@@ -22,8 +22,12 @@ def FindSerial(askInput=False) -> str:
     :return port: The string representation of the port.
     :return warning: Boolean indicating a warning has been printed."""
     warning = False
-    port = [p.device for p in serial.tools.list_ports.comports()
-            if 'Arduino' in p.manufacturer or 'Teensy' in p[1]]
+    comports = serial.tools.list_ports.comports()
+    port = []
+    for p in comports:
+        if p.manufacturer:
+            if 'Arduino' in p.manufacturer or 'Teensy' in p.manufacturer:
+                port.append(p.device)
     if not port:
         raise IOError("No microcontroller found!")
     elif len(port) > 1:
@@ -118,7 +122,7 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
     Example output:
     1634299822.1247501, True
     """
-    controlBool = False
+    controlBool = True
     lastCheck = time.time()
     elapsedTime = time.time() - lastCheckOld
     if elapsedTime >= dtComm:
@@ -128,13 +132,14 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
             try:
                 dataIn = GetComms(localMu, encAlg)
             except InputError as e:
+                controlBool = False
                 print(str(e))
                 localMu.reset_input_buffer()
                 return lastCheck, controlBool
             except UnicodeDecodeError as e:
+                controlBool = False
                 localMu.reset_input_buffer()
                 return lastCheck, controlBool
-            controlBool = True #Control after final parsing
             dataPacket = dataIn[1:-1].split('][')
             if len(dataPacket) != SPData.lenData: #flush & retry
                 controlBool = False
@@ -251,11 +256,11 @@ if __name__ == "__main__":
     maxDeltaAngles = [5*np.pi for i in range(lenData)]
     tolAngle = [0.02*np.pi for i in range(lenData)]
     SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngle, Pegasus.joints)
-    dtComm = 0.004
+    dtComm = 0.005
     port, warning = FindSerial()
     localMu = StartComms(port, baudRate)
     mSpeedMax = 200
-    mSpeedMin = 110
+    mSpeedMin = 120
     encAlg = "utf-8"
     print("Starting serial communication. \nType Ctrl+C to stop")
     try:
@@ -278,7 +283,7 @@ if __name__ == "__main__":
                             SPData.mSpeed[i] = mSpeedMax
                     SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
                                         f"{SPData.rotDirDes[i]}"
-                    print(SPData.dataOut)
+                print(SPData.dataOut)
                 localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
     except KeyboardInterrupt:
         #Set motor speeds to zero & close serial.
