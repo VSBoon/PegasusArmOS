@@ -123,7 +123,7 @@ class SerialData():
         self.prevAngle = [0 for i in range(lenData)]
         self.mSpeed = [0 for i in range(lenData)]
         self.rotDirDes = [None for i in range(lenData)]
-        self.dataOut = [None for i in range(lenData)]
+        self.dataOut = ['0|0' for i in range(lenData)]
         self.maxDeltaAngle = maxDeltaAngle
         self.angleTol = angleTol
 
@@ -169,7 +169,6 @@ class SerialData():
         commFault = [False for i in range(self.lenData)]
         for i in range(self.lenData):
             if abs(self.prevAngle[i] - self.currAngle[i]) >= self.maxDeltaAngle[i]:
-                print(f"prev: {self.prevAngle[i]}, curr: {self.currAngle[i]}, {self.maxDeltaAngle[i]}") #DEBUG
                 commFault[i] = True
                 self.currAngle[i] = self.prevAngle[i]
                 self.mSpeed[i] = 0
