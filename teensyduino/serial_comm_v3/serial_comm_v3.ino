@@ -30,7 +30,7 @@ char rotDirBuff[nCommands][2];
 char homingBuff[nCommands][2];
 char currBuff[nCommands][5];
 
-int dtComm = 4; //Make sure this aligns with dtComm in Python code!
+int dtComm = 5; //Make sure this aligns with dtComm in Python code!
 int dtCurrHome = 20;
 
 
