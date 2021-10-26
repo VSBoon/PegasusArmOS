@@ -16,30 +16,44 @@ import time
 import pygame
 
 def SpeedUp(SPData: SerialData, nJoint: int, rotDir: int, mSpeed: int):
-    """Def"""
+    """Sets motor speed for a given joint.
+    :param SPData: SerialData instance for connection with the 
+                   local microcontroller.
+    :param nJoint: In iterator integer value, in the 
+                   range [0, SPData.lenData)
+    :param rotDir: Indicates desired CW (0) or CCW (1) 
+                   rotation.
+    :param mSpeed: PWM value indicating motor speed / current.
+    """
     if SPData.currAngle[nJoint] < SPData.joints[nJoint].lims[0] or \
        SPData.currAngle[nJoint] > SPData.joints[nJoint].lims[1]:
-       print(f"Joint {nJoint} is at joint limit!")
        SPData.mSpeed[nJoint] = 0
     else:
         SPData.mSpeed[nJoint] = mSpeed
         SPData.rotDirDes[nJoint] = rotDir
-    SPData.dataOut[nJoint] = f"{SPData.mSpeed[nJoint]}|" + \
-                            f"{SPData.rotDirDes[nJoint]}"    
 
 def Break(SPData: SerialData, nJoint: int):
-    """Def"""
+    """Commands the motors to stop turning.
+    :param SPData: SerialData instance for connection with the 
+                   local microcontroller.
+    :param nJoint: In iterator integer value, in the 
+                   range [0, SPData.lenData)
+    """
     #TODO: ADD minSpeed to counter gravity
-    print("released")
     SPData.mSpeed[nJoint] = 0
-    SPData.dataOut[nJoint] = f"{SPData.mSpeed[nJoint]}|" + \
-                            f"{SPData.rotDirDes[nJoint]}"
 
 def ChangeSpeed(mSpeedSel: int, mSpeedMin: int, mSpeedMax: int):
+    """Changes the set motor speed between a minimum and maximum value.
+    All values should be an integer in the range [0, 255].
+    :param mSpeedSel: The current selected motor speed.
+    :param mSpeedMin: The minimal motor speed.
+    :param mSpeedMax: The maximal motor speed.
+    """
     if mSpeedSel == mSpeedMin:
         mSpeedSel = mSpeedMax
     else:
         mSpeedSel = mSpeedMin
+    print(f"speed: {mSpeedSel}")
     return mSpeedSel
 
 if __name__ == "__main__":
@@ -102,12 +116,14 @@ if __name__ == "__main__":
     tolAngles = [0.001*np.pi for i in range(lenData)]
     SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngles, Pegasus.joints)
     dtComm = 0.005
-    dtPrint = 1
-    dtInput = 0.005
+    dtPrint = 0.1
+    dtInput = 0.03 #approximately 30 fps, also avoids window crashing
     port, warning = FindSerial(askInput=True)
     localMu = StartComms(port, baudRate)
     encAlg = "utf-8"
     ### END OF SERIAL COMMUNICATION SETUP ###
+
+    limMargin = 0.05*np.pi #HOPEFULLY TEMPORARY!
 
     mSpeedMax = int(input("mSpeedMax (0 - 255): "))
     if mSpeedMax < 0 or mSpeedMax > 255:
@@ -136,13 +152,18 @@ if __name__ == "__main__":
         lastInput = time.time()
         print(f"speed: {mSpeedSel}")
         while True:
-            lastCheck = SReadAndParse(SPData, lastCheck, dtComm, localMu, encAlg)[0]
+            lastCheck = SReadAndParse(SPData, lastCheck, dtComm, 
+                                      localMu, encAlg)[0]
             if (time.time() - lastWrite >= dtComm):
+                #Check for each motor if the current move is allowed 
+                #within the joint limits
+                for i in range(SPData.lenData):
+                    SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
+                                        f"{SPData.rotDirDes[i]}"
                 localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
-                print(f"{SPData.dataOut}")
                 lastWrite = time.time()
             if (time.time() - lastPrint >= dtPrint):
-                print(f"{SPData.currAngle}")
+                print(f"{SPData.dataOut}")
                 lastPrint = time.time()
             if (time.time() - lastInput >= dtInput):
                 #Check for key-press, act accordingly
