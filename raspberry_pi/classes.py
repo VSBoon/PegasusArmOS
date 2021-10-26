@@ -8,7 +8,7 @@ class Link():
         """Constructer for Link class.
         :param inertiaMat: The 3x3 inertia matrix of the link with 
                            respect to the link frame. If the axes of 
-                           the link frame coincide with the principle 
+                           the link frame coincide with the cqqciple 
                            axes of inertia, this matrix simplifies to 
                            a diagonal matrix.
         :param mass: The mass of the link in kg.
@@ -122,7 +122,7 @@ class SerialData():
         self.currAngle = [0 for i in range(lenData)]
         self.prevAngle = [0 for i in range(lenData)]
         self.mSpeed = [0 for i in range(lenData)]
-        self.rotDirDes = [None for i in range(lenData)]
+        self.rotDirDes = [0 for i in range(lenData)]
         self.dataOut = ['0|0' for i in range(lenData)]
         self.maxDeltaAngle = maxDeltaAngle
         self.angleTol = angleTol
