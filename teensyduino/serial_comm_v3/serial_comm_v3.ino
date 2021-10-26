@@ -1,5 +1,4 @@
 #include <elapsedMillis.h>
-#include<stdint.h>
 elapsedMillis commTimer;
 elapsedMillis senseTimer;
 /*  This code is to be used with the 'serial_comm.py' code
@@ -12,8 +11,9 @@ elapsedMillis senseTimer;
 */
 String command;
 const int nCommands = 5; //Number of seperate groups of data.
-int mSpeed[nCommands];
-int rotCCW[nCommands];
+int mSpeed[nCommands] = {0};
+int mSpeedPrev[nCommands] = {0};
+int rotCCW[nCommands]; //Desired direction
 const byte homePin1 = 8;
 const byte currPin1 = 14; //A0
 const byte m1a = 6;
@@ -21,11 +21,11 @@ const byte m1b = 5;
 const byte e1a = 2;
 const byte e1b = 3;
 
-int32_t totCount[nCommands] = {0}; //Couldn't get 'long' to work
-int rotDir[nCommands] = {0};
+long totCount[nCommands] = {0l};
+int rotDir[nCommands] = {0}; //Actual direction
 int curr[nCommands] = {0};
 int homing[nCommands] = {0};
-char totCountBuff[nCommands][4];
+char totCountBuff[nCommands][10]; //Supports long's up to +/-10.000.000 counts
 char rotDirBuff[nCommands][2];
 char homingBuff[nCommands][2];
 char currBuff[nCommands][5];
@@ -44,21 +44,24 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(e1b), ReadE1b, CHANGE);
   pinMode(m1a, OUTPUT);
   pinMode(m1b, OUTPUT);
-
 }
 
 void loop() {
   serialReadAndParse();
-  if (mSpeed[0] == 0) { //Hard break
-    digitalWrite(m1a, HIGH);
-    digitalWrite(m1b, HIGH);
-  } else if (rotDir[0] != rotCCW[0] && rotCCW[0] == 0) {
-  digitalWrite(m1a, LOW);
-  analogWrite(m1b, mSpeed[0]);
-  } else if (rotDir[0] != rotCCW[0] && rotCCW[0] == 1) {
-  analogWrite(m1a, mSpeed[0]);
-  digitalWrite(m1b, LOW);
+  if (mSpeed[0] != mSpeedPrev[0]) {
+    if (mSpeed[0] == 0) { //Hard break
+      digitalWrite(m1a, HIGH);
+      digitalWrite(m1b, HIGH); 
+    } else if (rotCCW[0] == 0) {
+      analogWrite(m1b, mSpeed[0]);
+      digitalWrite(m1a, LOW);
+    } else if (rotCCW[0] == 1) {
+      analogWrite(m1a, mSpeed[0]);
+      digitalWrite(m1b, LOW);
+    }
   }
+  mSpeedPrev[0] = mSpeed[0];
+  
   if (senseTimer > dtCurrHome) {
     //Read homing & curr sensor
     //TO BE CHANGED INTO FOR LOOP WHEN ALL PINS ARE KNOWN
@@ -70,7 +73,7 @@ void loop() {
     //Send data to Raspberry Pi
     if (Serial.availableForWrite()) {
       for (int i = 0; i < nCommands; i++) {
-        itoa(totCount[i], totCountBuff[i], 10);
+        ltoa(totCount[i], totCountBuff[i], 10);
         itoa(rotDir[i], rotDirBuff[i], 10);
         itoa(curr[i], currBuff[i], 10);
         itoa(homing[i], homingBuff[i], 10);
