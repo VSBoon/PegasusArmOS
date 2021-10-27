@@ -7,10 +7,9 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 print("Importing local modules...")
-from classes import SerialData, InputError, Joint, Link, Robot
+from classes import SerialData, Joint, Link, Robot
 from serial_comm.serial_comm import SReadAndParse, FindSerial, StartComms
 print("Importing independant modules...")
-from typing import List
 import numpy as np
 import time
 import pygame
@@ -25,12 +24,8 @@ def SpeedUp(SPData: SerialData, nJoint: int, rotDir: int, mSpeed: int):
                    rotation.
     :param mSpeed: PWM value indicating motor speed / current.
     """
-    if SPData.currAngle[nJoint] < SPData.joints[nJoint].lims[0] or \
-       SPData.currAngle[nJoint] > SPData.joints[nJoint].lims[1]:
-       SPData.mSpeed[nJoint] = 0
-    else:
-        SPData.mSpeed[nJoint] = mSpeed
-        SPData.rotDirDes[nJoint] = rotDir
+    SPData.mSpeed[nJoint] = mSpeed
+    SPData.rotDirDes[nJoint] = rotDir
 
 def Break(SPData: SerialData, nJoint: int):
     """Commands the motors to stop turning.
@@ -42,21 +37,30 @@ def Break(SPData: SerialData, nJoint: int):
     #TODO: ADD minSpeed to counter gravity
     SPData.mSpeed[nJoint] = 0
 
-def ChangeSpeed(mSpeedSel: int, mSpeedMin: int, mSpeedMax: int):
-    """Changes the set motor speed between a minimum and maximum value.
+def ChangeSpeed(mSpeedSel: int, mSpeedMin: int, mSpeedMax: int, dSpeed: int, 
+                incr: bool):
+    """Changes the set motor speed iteratively.
     All values should be an integer in the range [0, 255].
     :param mSpeedSel: The current selected motor speed.
     :param mSpeedMin: The minimal motor speed.
     :param mSpeedMax: The maximal motor speed.
+    :param dSpeed: Change in speed per click.
+    :param incr: Increase (True) or Decrease (False) speed.
     """
-    if mSpeedSel == mSpeedMin:
-        mSpeedSel = mSpeedMax
+    if incr:
+        if (mSpeedMax - mSpeedMin) < dSpeed:
+            mSpeedSel = mSpeedMax
+        else:
+            mSpeedSel += dSpeed
     else:
-        mSpeedSel = mSpeedMin
+        if (mSpeedSel - mSpeedMin) < dSpeed:
+            mSpeedSel = mSpeedMin
+        else:
+            mSpeedSel -= dSpeed
     print(f"speed: {mSpeedSel}")
     return mSpeedSel
 
-if __name__ == "__main__":
+def PegasusManualControl():
     ### INTANTIATE ROBOT INSTANCE ###
     #Inertia matrices
     iMat0 = np.diag([0.03584238, 0.02950513, 0.04859042])
@@ -94,13 +98,14 @@ if __name__ == "__main__":
     lims2 = [-np.pi, 0.25*np.pi] #-180 deg, + 45 deg.
     lims3 = [-np.pi, 0.25*np.pi] #-180 deg, +45 deg.
     lims4 = [-np.pi, np.pi] #+/- 180 deg.
+    limsTest = [-0.1*np.pi, 0.1*np.pi]
     cpr = 1440
     gearRatioList = [19.7*50, 19.7*50, (65.5*20)/9, (65.5*20)/9, (127.7*32)/9]
     L0 = Link(iMat0, massList[0], None, Tsi0)
     L1 = Link(iMat1, massList[1], L0, Tsi1)
     L2 = Link(iMat2, massList[2], L1, Tsi2)
     L34 = Link(iMat34, massList[3], L2, Tsi34)
-    J0 = Joint(S0, [None, L0], gearRatioList[0], cpr, lims0)
+    J0 = Joint(S0, [None, L0], gearRatioList[0], cpr, limsTest) #REMOVE LIMSTEST FOR LIMS0!
     J1 = Joint(S1, [L0, L1], gearRatioList[1], cpr, lims1)
     J2 = Joint(S2, [L1, L2], gearRatioList[2], cpr, lims2)
     J3 = Joint(S3, [L2,34], gearRatioList[3], cpr, lims3)
@@ -109,21 +114,19 @@ if __name__ == "__main__":
     ### END OF ROBOT INITIATION ###
 
     ### SETUP SERIAL COMMUNICATION ###
-    baudRate = int(input("Please specify the baudrate: "))
+    baudRate = 115200
     lenData = len(Pegasus.joints)
     desAngles = [0 for i in range(lenData)]
     maxDeltaAngles = [np.pi for i in range(lenData)]
     tolAngles = [0.001*np.pi for i in range(lenData)]
     SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngles, Pegasus.joints)
-    dtComm = 0.005
-    dtPrint = 0.1
+    dtComm = 0.005 #Make sure this aligns with dtComm in C++ code.
+    dtPrint = 1
     dtInput = 0.03 #approximately 30 fps, also avoids window crashing
     port, warning = FindSerial(askInput=True)
     localMu = StartComms(port, baudRate)
     encAlg = "utf-8"
     ### END OF SERIAL COMMUNICATION SETUP ###
-
-    limMargin = 0.05*np.pi #HOPEFULLY TEMPORARY!
 
     mSpeedMax = int(input("mSpeedMax (0 - 255): "))
     if mSpeedMax < 0 or mSpeedMax > 255:
@@ -157,13 +160,15 @@ if __name__ == "__main__":
             if (time.time() - lastWrite >= dtComm):
                 #Check for each motor if the current move is allowed 
                 #within the joint limits
+                SPData.CheckJointLim()
                 for i in range(SPData.lenData):
                     SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
                                         f"{SPData.rotDirDes[i]}"
                 localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
                 lastWrite = time.time()
             if (time.time() - lastPrint >= dtPrint):
-                print(f"{SPData.dataOut}")
+                print(f"Speed: {SPData.mSpeed}, Direction: {SPData.rotDirDes}")
+                print(f"Count: {SPData.totCount}, Homing: {SPData.homing}")
                 lastPrint = time.time()
             if (time.time() - lastInput >= dtInput):
                 #Check for key-press, act accordingly
@@ -192,7 +197,10 @@ if __name__ == "__main__":
                             SpeedUp(SPData, 4, 0, mSpeedSel)
                         elif event.key == pygame.K_c:
                             mSpeedSel = ChangeSpeed(mSpeedSel, mSpeedMin, 
-                                                    mSpeedMax)
+                                                    mSpeedMax, 5, True)
+                        elif event.key == pygame.K_x:
+                            mSpeedSel = ChangeSpeed(mSpeedSel, mSpeedMin, 
+                                                    mSpeedMax, 5, False)
 
                     elif event.type == pygame.KEYUP:
                         if event.key == pygame.K_q or event.key == pygame.K_a:
@@ -217,3 +225,7 @@ if __name__ == "__main__":
         time.sleep(dtComm)
         localMu.__del__()
         print("Quitting...")
+        return 0
+
+if __name__ == "__main__":
+    PegasusManualControl()
