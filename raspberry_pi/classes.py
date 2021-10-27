@@ -126,6 +126,7 @@ class SerialData():
         self.dataOut = ['0|0' for i in range(lenData)]
         self.maxDeltaAngle = maxDeltaAngle
         self.angleTol = angleTol
+        self.limBool = [False for i in range(lenData)]
 
     def ExtractVars(self, dataPacket: List[str]):
         """Extracts & translates information in each datapacket.
@@ -194,6 +195,23 @@ class SerialData():
                 self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}"
         return success
 
+    def CheckJointLim(self):
+        """Ensures motors cannot move past joint limits.
+        """
+        for i in range(self.lenData):
+            self.limBool[i] = False
+            if self.currAngle[i] < self.joints[i].lims[0] and \
+               self.rotDirDes[i] == 1 and self.mSpeed[i] != 0:
+                print(f"Lower lim reached: {self.rotDirDes[i]}")
+                self.mSpeed[i] = 0
+                self.limBool[i] = True
+            elif self.currAngle[i] > self.joints[i].lims[1] and \
+                self.rotDirDes[i] == 0 and self.mSpeed[i] != 0:
+                print(f"Upper lim reached: {self.rotDirDes[i]}")
+                self.mSpeed[i] = 0
+                self.limBool[i] = True
+
+    
     def GetDir(self):
         """Gives the desired direction of rotation
         """
