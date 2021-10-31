@@ -34,14 +34,15 @@ class Joint():
     """A storage class combining all the information relevant to joint
     calculations."""
     def __init__(self, screwAx: np.ndarray, links: List[Link], gearRatio: 
-                 float, cpr: int, lims: List[float] = [-2*np.pi, 2*np.pi], 
-                 inSpace: bool = True):
+                 float, km: float, cpr: int, lims: List[float] = 
+                 [-2*np.pi, 2*np.pi], inSpace: bool = True):
         """Constructor for Joint class.
         :param screwAx: A 6x1 screw axis in the home configuration, per 
         Definition 3.24 of the Modern Robotics book.
         :param links: Connecting links, in the order [prev, next].
         :param gearRatio: The reduction ratio 1:gearRatio between the
                           motor shaft and joint axes.
+        :param km: Motor constant in Nm/A
         :param cpr: Counts per revolution of the encoder shaft.
         :param lims: The joint limits, in the order [lower, upper].
         :param inSpace: Notes if the screw axis is in the space frame
@@ -50,15 +51,17 @@ class Joint():
         self.screwAx: np.ndarray = screwAx
         self.lims: List[float] = lims
         self.gearRatio = gearRatio
+        self.km = km
         self.cpr = cpr
         self.enc2Theta = 1/(cpr*gearRatio) * 2*np.pi
         self.links: List[Link] = links
         self.inSpace: bool = inSpace
     
     def __repr__(self):
-        return f"Joint(screwAx: {self.screwAx}\njointChild:" +\
-               f"{self.jointChild}\nlims: {self.lims}\nlinks: {self.links}" +\
-               f"\ninSpace: {self.inSpace}"  
+        return f"Joint(screwAx: {self.screwAx}\nlims: {self.lims}\n" +\
+               f"gearRatio: {self.gearRatio}\ncpr: {self.cpr}\nenc2Theta:" +\
+               f"{self.enc2Theta}\nlinks: {self.links}\n" +\
+               f"inSpace: {self.inSpace}"  
 
 class Robot():
     """Overarching robot class, containing all joints & links 
