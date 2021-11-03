@@ -6,7 +6,7 @@ current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
 sys.path.append(parent)
 
-from classes import SerialData, InputError, Joint, Link, Robot
+from classes import SerialData, InputError, Joint, Link, Robot, Homing
 from typing import List, Tuple
 from trajectory_generation.traj_gen import TrajGen, TrajDerivatives
 import serial
@@ -91,7 +91,7 @@ def GetComms(localMu: serial.Serial, encAlg: str = "utf-8") -> str:
     return dataIn
 
 def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
-                  localMu: serial.Serial, encAlg: str = "utf-8") \
+                  localMu: serial.Serial, homeObj: Homing, encAlg: str = "utf-8") \
                   -> Tuple[float, bool]:
     """Serial read function which parses data into SerialData object.
     :param SPData: SerialData instance, stores & parses serial data.
@@ -148,7 +148,7 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
             #Expected form dataPacket[i]: "totCount|rotDir"
             #Or "totCount|rotDir|currentVal|homingBool"
             #Extract both variables, put into SPData object.
-            SPData.ExtractVars(dataPacket)
+            SPData.ExtractVars(dataPacket, homeObj)
     else:
         return lastCheckOld, controlBool
     return lastCheck, controlBool
@@ -255,7 +255,8 @@ if __name__ == "__main__":
     desAngles = [4*np.pi, 4*np.pi, 4*np.pi, 4*np.pi, 4*np.pi]
     maxDeltaAngles = [5*np.pi for i in range(lenData)]
     tolAngle = [0.02*np.pi for i in range(lenData)]
-    SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngle, Pegasus.joints)
+    SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngle, 
+                        Pegasus.joints)
     dtComm = 0.005
     port, warning = FindSerial()
     localMu = StartComms(port, baudRate)
@@ -263,10 +264,17 @@ if __name__ == "__main__":
     mSpeedMin = 120
     encAlg = "utf-8"
     print("Starting serial communication. \nType Ctrl+C to stop")
+    ## END OF SERIAL COMMUNICATION SETUP ###
+    homingPins = [3, 5, 7, 29, 31, 26]
+    homeObj = Homing(homingPins)
+
     try:
         lastCheck = time.time()
         while True:
-            lastCheck, controlBool = SReadAndParse(SPData, lastCheck, dtComm, localMu, encAlg)
+            #SReadAndParse has an internal dt clock
+            lastCheck, controlBool = SReadAndParse(SPData, lastCheck, 
+                                                   dtComm, localMu, 
+                                                   homeObj, encAlg)
             if controlBool and (time.time() - lastCheck >= dtComm):
                 commFault = SPData.CheckCommFault()
                 SPData.GetDir()
@@ -282,12 +290,14 @@ if __name__ == "__main__":
                         elif SPData.mSpeed[i] > mSpeedMax:
                             SPData.mSpeed[i] = mSpeedMax
                     SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
-                                        f"{SPData.rotDirDes[i]}"
+                                        f"{SPData.rotDirDes[i]}|" + \
+                                        f"{SPData.homing[i]}"
                 print(SPData.dataOut)
                 localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
     except KeyboardInterrupt:
         #Set motor speeds to zero & close serial.
-        localMu.write(f"{['0|0'] * lenData}\n".encode(encAlg))
+        localMu.write(f"{['0|0|0'] * lenData}\n".encode(encAlg))
         time.sleep(dtComm)
         localMu.__del__()
+        homeObj.CleanPins()
         print("Ctrl+C pressed, quitting...")
