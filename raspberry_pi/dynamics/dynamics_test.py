@@ -6,7 +6,6 @@ current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
 sys.path.append(parent)
 
-from kinematics.kinematic_funcs import IKSpace, FKSpace
-import modern_robotics as mr
-import numpy as np
+from dynamics_funcs import FeedForward
 
+def test_FFContinuity():

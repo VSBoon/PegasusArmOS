@@ -7,3 +7,6 @@ raspberry_pi/trajectory_generation/__pycache__/traj_gen.cpython-37.pyc
 raspberry_pi/kinematics/__pycache__/__init__.cpython-37.pyc
 raspberry_pi/__pycache__/
 __pycache__/
+raspberry_pi/kinematics/.pytest_cache/v/cache/lastfailed
+raspberry_pi/kinematics/__pycache__/kinematic_funcs.cpython-37.pyc
+raspberry_pi/kinematics/__pycache__/kinematic_test.cpython-37-pytest-6.2.5.pyc
