@@ -7,7 +7,7 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 print("Importing local modules...")
-from classes import SerialData, Joint, Link, Robot
+from classes import SerialData, Joint, Link, Robot, Homing
 from serial_comm.serial_comm import SReadAndParse, FindSerial, StartComms
 print("Importing independant modules...")
 import numpy as np
@@ -127,6 +127,8 @@ def PegasusManualControl():
     localMu = StartComms(port, baudRate)
     encAlg = "utf-8"
     ### END OF SERIAL COMMUNICATION SETUP ###
+    homingPins = [3, 5, 7, 29, 31, 26]
+    homeObj = Homing(homingPins)
 
     mSpeedMax = int(input("mSpeedMax (0 - 255): "))
     if mSpeedMax < 0 or mSpeedMax > 255:
@@ -156,7 +158,7 @@ def PegasusManualControl():
         print(f"speed: {mSpeedSel}")
         while True:
             lastCheck = SReadAndParse(SPData, lastCheck, dtComm, 
-                                      localMu, encAlg)[0]
+                                      localMu, homeObj, encAlg)[0]
             if (time.time() - lastWrite >= dtComm):
                 #Check for each motor if the current move is allowed 
                 #within the joint limits
@@ -225,6 +227,9 @@ def PegasusManualControl():
         time.sleep(dtComm)
         localMu.__del__()
         print("Quitting...")
+    
+    finally: #Always clean RPi pins!
+        homeObj.CleanPins()
         return 0
 
 if __name__ == "__main__":
