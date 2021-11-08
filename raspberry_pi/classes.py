@@ -184,12 +184,26 @@ class SerialData():
             if i == 3 or i == 4:
                 """Due to the unique mechanics of the robot, the 
                 encoder only measures the absolute angle of 3 or 4, 
-                not relative to 2 or 3, respectively."""
+                not relative to 2 or 3, respectively.
+                """
                 self.currAngle[i] -= self.currAngle[i-1] 
         #homeObj.bools is updated through interrupts.
         self.homing = homeObj.bool
 
-
+    def Dtheta2Mspeed(self, dtheta: np.ndarray[float], 
+                      dthetaMax: List[float], PWMMin: int, PWMMax: int):
+        """Translates desired motor velocities in rad/s to PWM.
+        :param dtheta: Numpy array of motor velocities in [rad/s].
+        :param dthetaMax: Angular velocity of each motor at a PWM of 255.
+        :param PWMMin: Minimum PWM value necessary to move the motor.
+        :param PWMMax: Maximum PWM value that the motors can be given.
+        """
+        if dtheta.size != self.lenData:
+            raise InputError("size of dtheta != lenData: " +
+                             f"{dtheta.size} != {self.lenData}")
+        else:
+            self.mSpeed = [PWMMin + round((dtheta[i]/dthetaMax[i])*(PWMMax-PWMMin)) 
+            for i in range(self.lenData)] #Rudimentary solution, PID will help!
 
     def CheckCommFault(self) -> bool:
         """Checks if data got corrupted using a maximum achievable 
