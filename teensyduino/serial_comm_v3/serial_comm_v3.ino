@@ -40,14 +40,14 @@ void setup() {
   pinMode(homePin1, INPUT_PULLUP);
   pinMode(e1a, INPUT_PULLUP);
   pinMode(e1b, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(e1a), ReadE1a, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(e1b), ReadE1b, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(e1a), ReadE1aHigh, RISING);
+  //attachInterrupt(digitalPinToInterrupt(e1b), ReadE1b, CHANGE);
   pinMode(m1a, OUTPUT);
   pinMode(m1b, OUTPUT);
 }
 
 void loop() {
-  serialReadAndParse();
+  SerialReadAndParse();
   if (mSpeed[0] != mSpeedPrev[0]) {
     if (mSpeed[0] == 0) { //Hard break
       digitalWrite(m1a, HIGH);
@@ -94,7 +94,7 @@ void loop() {
   }
 }
 
-void parseCommand(String com) {
+void ParseCommand(String com) {
   /*Function to parse incoming data from the RPi. Incoming data should be
      of the type ['mSpeed0|rotCCW0', ..., 'mSpeed1|rotCWW1'].
      mSpeedn should be an integer between 0 and 255, and rotCCW should be 0 or 1.
@@ -113,7 +113,7 @@ void parseCommand(String com) {
   }
 }
 
-void serialReadAndParse() {
+void SerialReadAndParse() {
   /* Checks for new data in the serial buffer until an end-of-line character.
      Consequently parses it using the parseCommand() function.
   */
@@ -122,7 +122,7 @@ void serialReadAndParse() {
     if (c == '\n') {
       //Reset & parse
       Serial.flush();
-      parseCommand(command);
+      ParseCommand(command);
       command = "";
     } else {
       command += c;
@@ -150,4 +150,10 @@ void ReadE1b() {
   } else {
     totCount[0]--;
   }
+}
+
+void ReadE1aHigh() {
+  rotDir[0] = digitalRead(e1a) != digitalRead(e1b); // e1a == e1b
+
+  totCount[0] = (rotDir[0]) ? totCount[0]-1 : totCount[0]+1;
 }

@@ -128,3 +128,54 @@ def ThetaInitGuess(psbHome: np.ndarray, psbTarget: np.ndarray, majorScrewJoints:
         elif thetaGuessList[i] < jointLimits[i][0]:
             thetaGuessList[i] = jointLimits[i][0]
     return thetaGuessList
+
+def PID(ref: "np.ndarray[float]", Fdb: "np.ndarray[float]",
+        kP: "np.ndarray[float]", kI: "np.ndarray[float]", 
+        kD: "np.ndarray[float]", termI: "np.ndarray[float]", 
+        ILim: "np.ndarray[float]", dt: float, errPrev: 
+        "np.ndarray[float]") -> "np.ndarray[float]":
+        """Adds discrete PID error control to a reference signal, 
+        given a feedback signal and PID constants.
+        :param ref: Reference / Feed-forward signal.
+        :param Fdb: Feedback signal.
+        :param kP: nxn proportional matrix, typically an identity
+                   matrix times a constant.
+        :param kI: nxn integral matrix, typically an identity matrix
+                   times a constant.
+        :param kD: nxn difference matrix, typically an identity matrix
+                   times a constant.
+        NOTE: To omit P-, I-, or D action, input kX = 0
+        :param termI: Accumulative integral term.
+        :param ILim: Integral term limiter for anti-integral windup.
+        :param dt: Time between each error calculation in seconds.
+        :param errPrev: error value from the previous PID control loop.
+        :return refWPID: Reference signal added with the PID signal.
+        :return termI: The new accumulative integral term.
+        :retur err: The new error calculation.
+        
+        Example input:
+        ref = [0, 1, 2, 3, 4]
+        Fdb = [0, 1.1, 1.9, 3.5, 4]
+        kP = 1*np.eye(5)
+        kI = 0.1*np.eye(5)
+        kD = 0.01*np.eye(5)
+        termI = [0,0,0,0,0]
+        ILim = [5,5,5,5,5]
+        dt = 0.01
+        errPrev = [0,0,0,0,0]
+
+        Output:
+        ([0.  0.7 2.3 1.5 4. ],
+        [0. 0. 0. 0. 0. ],
+        [ 0.  -0.1  0.1 -0.5  0. ])
+        """
+        err = ref - Fdb
+        termP = np.dot(kP, err)
+        if any(abs(termI) >= ILim):
+            termI = [np.sign(termI[i])*ILim[i] if termI[i] >= ILim[i] else termI[i] for i in range(err.size)]
+        else: #Trapezoidal integration
+            trpz = dt*(errPrev + err)/2
+            np.add(termI, np.dot(kI, trpz), out=termI, casting="unsafe")
+        termD = np.dot(kD, (err - errPrev)/dt)
+        refWPID = ref + termP + termI + termD
+        return refWPID, termI, err
