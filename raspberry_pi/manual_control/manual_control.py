@@ -10,11 +10,14 @@ print("Importing local modules...")
 from classes import SerialData, Joint, Link, Robot, Homing
 from serial_comm.serial_comm import SReadAndParse, FindSerial, StartComms
 print("Importing independant modules...")
+from typing import Tuple
+import serial
+import modern_robotics as mr
 import numpy as np
 import time
 import pygame
 
-def SpeedUp(SPData: SerialData, nJoint: int, rotDir: int, mSpeed: int):
+def SpeedUpJ(SPData: SerialData, nJoint: int, rotDir: int, mSpeed: int):
     """Sets motor speed for a given joint.
     :param SPData: SerialData instance for connection with the 
                    local microcontroller.
@@ -27,7 +30,7 @@ def SpeedUp(SPData: SerialData, nJoint: int, rotDir: int, mSpeed: int):
     SPData.mSpeed[nJoint] = mSpeed
     SPData.rotDirDes[nJoint] = rotDir
 
-def Break(SPData: SerialData, nJoint: int):
+def BreakJ(SPData: SerialData, nJoint: int):
     """Commands the motors to stop turning.
     :param SPData: SerialData instance for connection with the 
                    local microcontroller.
@@ -37,7 +40,7 @@ def Break(SPData: SerialData, nJoint: int):
     #TODO: ADD minSpeed to counter gravity
     SPData.mSpeed[nJoint] = 0
 
-def ChangeSpeed(mSpeedSel: int, mSpeedMin: int, mSpeedMax: int, dSpeed: int, 
+def ChangeSpeedJ(mSpeedSel: int, mSpeedMin: int, mSpeedMax: int, dSpeed: int, 
                 incr: bool):
     """Changes the set motor speed iteratively.
     All values should be an integer in the range [0, 255].
@@ -46,6 +49,7 @@ def ChangeSpeed(mSpeedSel: int, mSpeedMin: int, mSpeedMax: int, dSpeed: int,
     :param mSpeedMax: The maximal motor speed.
     :param dSpeed: Change in speed per click.
     :param incr: Increase (True) or Decrease (False) speed.
+    :return mSpeedSel: New selected motor speed in [0, 255]
     """
     if incr:
         if (mSpeedMax - mSpeedMin) < dSpeed:
@@ -60,7 +64,359 @@ def ChangeSpeed(mSpeedSel: int, mSpeedMin: int, mSpeedMax: int, dSpeed: int,
     print(f"speed: {mSpeedSel}")
     return mSpeedSel
 
-def PegasusManualControl():
+def CheckKeysJoint(SPData: SerialData, mSpeedMin: int, mSpeedMax: int,
+                   mSpeedSel: int):
+    """Checks for key-presses and executes joint control commands 
+    accordingly.
+    All mSpeed values should be an integer in the range [0, 255].
+    :param SPData: SerialData object for communication.
+    :param mSpeedSel: The current selected motor speed.
+    :param mSpeedMin: The minimal motor speed.
+    :param mSpeedMax: The maximal motor speed.
+    """
+    events = pygame.event.get()
+    for event in events:
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_q:
+                SpeedUpJ(SPData, 0, 1, mSpeedSel)
+            elif event.key == pygame.K_a:
+                SpeedUpJ(SPData, 0, 0, mSpeedSel)
+            elif event.key == pygame.K_w:
+                SpeedUpJ(SPData, 1, 1, mSpeedSel)
+            elif event.key == pygame.K_s:
+                SpeedUpJ(SPData, 1, 0, mSpeedSel)
+            elif event.key == pygame.K_e:
+                SpeedUpJ(SPData, 2, 1, mSpeedSel)
+            elif event.key == pygame.K_d:
+                SpeedUpJ(SPData, 2, 0, mSpeedSel)
+            elif event.key == pygame.K_r:
+                SpeedUpJ(SPData, 3, 1, mSpeedSel)
+            elif event.key == pygame.K_f:
+                SpeedUpJ(SPData, 3, 0, mSpeedSel)
+            elif event.key == pygame.K_t:
+                SpeedUpJ(SPData, 4, 1, mSpeedSel)
+            elif event.key == pygame.K_g:
+                SpeedUpJ(SPData, 4, 0, mSpeedSel)
+            elif event.key == pygame.K_c:
+                mSpeedSel = ChangeSpeedJ(mSpeedSel, mSpeedMin, 
+                                        mSpeedMax, 5, True)
+            elif event.key == pygame.K_x:
+                mSpeedSel = ChangeSpeedJ(mSpeedSel, mSpeedMin, 
+                                        mSpeedMax, 5, False)
+
+        elif event.type == pygame.KEYUP:
+            if event.key == pygame.K_q or event.key == pygame.K_a:
+                BreakJ(SPData, 0)
+            elif event.key == pygame.K_w or event.key == pygame.K_s:
+                BreakJ(SPData, 1)
+            elif event.key == pygame.K_e or event.key == pygame.K_d:
+                BreakJ(SPData, 2)
+            elif event.key == pygame.K_r or event.key == pygame.K_f:
+                BreakJ(SPData, 3)
+            elif event.key == pygame.K_t or event.key == pygame.K_g:
+                BreakJ(SPData, 4)
+        elif event.type == pygame.QUIT:
+            raise KeyboardInterrupt()
+
+def PegasusJointControl(SPData: SerialData, localMu: serial.Serial, dtComm:
+                        float, dtPrint: float, dtInput: float, homeObj: Homing, encAlg: str = 'utf-8'):
+    """Allows one to move each joint of the Pegasus arm independantly.
+    :param SPData: SerialData object for communication.
+    :param localMu: Serial object to connect to local microcontroller.
+    :param dtComm: Interval between sending & receiving data from 
+                   the local microcontroller in seconds.
+    :param dtInput: Interval of checking for user inputs in seconds.
+    :param dtPrint: Interval between printing robot data on the 
+                    terminal in seconds.
+    :param homeObj: Homing object reading & storing homing sensor data.
+    :param encAlg: Encoding algorithm for serial communication."""
+
+    #Set speeds based on user input
+    mSpeedMax = int(input("mSpeedMax (0 - 255): "))
+    if mSpeedMax < 0 or mSpeedMax > 255:
+        print("Invalid entry, putting mSpeedMax at 120.")
+        mSpeedMax = 120
+    mSpeedMin = int(input("mSpeedMin (0 - 255): "))
+    if mSpeedMin > mSpeedMax:
+        print("mSpeedMin must be smaller than mSpeedMax.") 
+        if mSpeedMax - 10 > 0:
+            print(f"Setting mSpeedMin to {mSpeedMax - 10}.")
+            mSpeedMin = mSpeedMax - 10
+        else:
+            print("Setting mSpeedMin to 0")
+            mSpeedMin = 0
+    mSpeedSel = mSpeedMin
+    print("Press 'C' to increment speed, 'X' to decrement.")
+    print(f"speed: {mSpeedSel}")
+
+    pygame.init()
+    screen = pygame.display.set_mode([500, 500])
+    print("Starting main loop.\n Type Ctrl+C to stop")
+    lastCheck = time.time()
+    lastWrite = time.time()
+    lastPrint = time.time()
+    lastInput = time.time()
+    try:
+        while True: #Main loop
+            lastCheck = SReadAndParse(SPData, lastCheck, dtComm, 
+                                      localMu, homeObj, encAlg)[0]
+            if (time.time() - lastWrite >= dtComm):
+                #Check for each motor if the current move is allowed 
+                #within the joint limits
+                SPData.CheckJointLim()
+                for i in range(SPData.lenData):
+                    SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
+                                        f"{SPData.rotDirDes[i]}"
+                localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
+                lastWrite = time.time()
+            if (time.time() - lastPrint >= dtPrint):
+                print(f"Speed: {SPData.mSpeed}, Direction: {SPData.rotDirDes}")
+                print(f"Count: {SPData.totCount}, Homing: {SPData.homing}")
+                lastPrint = time.time()
+            if (time.time() - lastInput >= dtInput):
+                #Check for key-press, act accordingly
+                CheckKeysJoint(SPData, mSpeedMin, mSpeedMax, mSpeedSel)
+                lastInput = time.time()
+
+    except KeyboardInterrupt:
+        #Set motor speeds to zero & close serial.
+        localMu.write(f"{['0|0'] * SPData.lenData}\n".encode(encAlg))
+        time.sleep(dtComm)
+        localMu.__del__()
+        print("Quitting...")
+    
+    finally: #Always clean RPi pins!
+        homeObj.CleanPins()
+        return None
+
+def CheckKeysEF(SPData: SerialData, vMin: float, vMax: float, vSel: float, 
+                wMin: float, wMax: float, wSel: float, dVel: float= 0.05) \
+                -> Tuple(np.ndarray[float], float, float):
+    """Checks for key-presses and alter velocity components
+    and other factors accordingly.\n
+    KEY-BINDINGS (all in the space frame {s}):
+    w/s: Move in +/- x-direction.
+    a/d: Move in +/- y-direction.
+    z/x: Move in +/- z-direction.
+    q/e: Rotate +/- around x-axis.
+    r/f: Rotate +/- around y-axis.
+    c/v: Rotate +/- around z-axis.
+    t/y: Increment/decrement linear velocity.
+    g/h: Increment/decrement angular velocity.\n
+    :param SPData: SerialData object for communication.
+    :param vSel: Previously selected linear velocity in [m/s].
+    :param wSel: Previously selected angular velocity in [rad/s].
+    :param vMax: Maximum linear end-effector velocity in [m/s].
+    :param vMin: Minimum linear end-effector velocity in [m/s].
+    :param wMax: Maximum angular end-effector velocity in [rad/s].
+    :param wMin: Minimum angular end-effector velocity in [rad/s].
+    :param dVel: Change in velocity per key press, in [m/s] & [rad/s].
+    :return V: 6x1 velocity twist.
+    :return vSel: Newly selected linear velocity in [m/s].
+    :return wSel: Newly selected angular velocity in [rad/s].
+    """
+    V = [0 for i in range(6)]
+    if SPData.limBool.any():
+        limFactor = 0
+    events = pygame.event.get()
+    for event in events:
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_w:
+                V[3] = vSel * limFactor
+            elif event.key == pygame.K_s:
+                V[3] = -vSel * limFactor
+            elif event.key == pygame.K_a:
+                V[4] = vSel * limFactor
+            elif event.key == pygame.K_d:
+                V[4] = -vSel * limFactor
+            elif event.key == pygame.K_z:
+                V[5] = vSel * limFactor
+            elif event.key == pygame.K_x:
+                V[5] = -vSel * limFactor
+            elif event.key == pygame.K_q:
+                V[0] = wSel * limFactor
+            elif event.key == pygame.K_e:
+                V[0] = -wSel * limFactor
+            elif event.key == pygame.K_r:
+                V[1] = wSel * limFactor
+            elif event.key == pygame.K_f:
+                V[1] = -wSel * limFactor
+            elif event.key == pygame.K_c:
+                V[2] = wSel * limFactor
+            elif event.key == pygame.K_v:
+                V[2] = -wSel * limFactor
+            elif event.key == pygame.K_t:
+                if (vSel + dVel) < vMax:
+                    vSel += dVel
+                else:
+                    vSel = vMax
+            elif event.key == pygame.K_y:
+                if (vSel - dVel) < vMin:
+                    vSel -= dVel
+                else:
+                    vSel = vMin
+            elif event.key == pygame.K_g:
+                if (wSel + dVel) < wMax:
+                    wSel -= dVel
+                else:
+                    wSel = wMax
+                print(f"linear velocity: {vSel} m/s")
+            elif event.key == pygame.K_h:
+                if (wSel - dVel) < wMin:
+                    wSel -= dVel
+                else:
+                    wSel = wMin
+                print(f"angular velocity: {wSel} rad/s")
+
+        elif event.type == pygame.KEYUP:
+            if event.key == pygame.K_w or event.key == pygame.K_s:
+                V[3] = 0
+            elif event.key == pygame.K_a or event.key == pygame.K_d:
+                V[4] = 0
+            elif event.key == pygame.K_z or event.key == pygame.K_x:
+                V[5] = 0
+            elif event.key == pygame.K_q or event.key == pygame.K_e:
+                V[0] = 0
+            elif event.key == pygame.K_r or event.key == pygame.K_f:
+                V[1] = 0
+            elif event.key == pygame.K_c or event.key == pygame.K_v:
+                V[2] = 0
+        elif event.type == pygame.QUIT:
+            raise KeyboardInterrupt()
+        return V, vSel, wSel
+
+def DThetaToComm(SPData: SerialData, dtheta: np.ndarray[float]) \
+                -> np.ndarray[float]:
+    """Translated the desired angular velocities along the screw axes
+    into the desired angular velocities at the input shafts of the 
+    Amatrol Pegasus robot arm.
+    :param dtheta: Array of angular velocities along the screw axes of
+                   the robot, as defined in its Joint objects.
+    :return dthetaComm: Desired angular velocities at the input shafts 
+                        of the robot arm.
+    """
+    dthetaComm = dtheta
+    """Translate virtual joint velocities of joint 4 & 5 
+    into actual motor velocities. TODO: CONFIRM MOVEMENT DIRECTION!"""
+    dthetaComm[3] = dtheta[3] - dtheta[4]
+    dthetaComm[4] = dtheta[3] + dtheta[4]
+    gearRatioArr = np.array([SPData.joints[i].gearRatio for i in 
+                             range(SPData.lenData)])
+    dthetaComm = np.multiply(dtheta, gearRatioArr)
+    return dthetaComm
+
+def PegasusEFControl(SPData: SerialData, localMu: serial.Serial, dtComm:
+                        float, dtPrint: float, dtInput: float, homeObj: Homing, encAlg: str = 'utf-8'):
+    """Allows one to control the Pegasus robot arm in end-effector space.
+    :param :"""
+    #Absolute maximum and minimum linear- & rotational speeds in SI.
+    vMaxLim = 0.5
+    vMinLim = 0
+    wMaxLim = 1
+    wMinLim = 0
+    #Set speeds from user input:
+    try:
+        vMax = int(input("vMax (m/s), make sure < 0.5 m/s: "))
+    except ValueError as e:
+        if "invalid literal for int()" in e.message:
+            print("Invalid input, setting vMax to 0.2 m/s")
+        else:
+            print("Unkown error, setting vMax to 0.2 m/s")
+        vMax = 0.2
+    if vMax > vMaxLim:
+        print(f"Invalid entry: {vMax} > 0.5. Setting vMax = {vMaxLim}")
+        vMax = vMaxLim
+    try:
+        vMin = int(input("vMin (m/s), make sure > 0 m/s: "))
+    except ValueError as e:
+        if "invalid literal for int()" in e.message:
+            print("Invalid input, setting vMin to 0 m/s")
+        else:
+            print("Unkown error, setting vMin to 0 m/s")
+        vMin = 0
+    if vMin < vMinLim:
+        print(f"Invalid entry. {vMin} < 0. Setting vMin = 0")
+        vMin = 0
+    elif vMin > vMax:
+        print(f"Invalid entry. {vMin} > vMax. Setting vMin = {vMax - 0.1}")
+        vMin = vMax - 0.1
+    try:
+        wMax = int(input("wMax (rad/s), make sure < 1 rad/s: "))
+    except ValueError as e:
+        if "invalid literal for int()" in e.message:
+            print("Invalid input, setting wMax to 0.5 rad/s")
+        else:
+            print("Unkown error, setting wMax to 0.5 m/s")
+        wMax = 0.5
+    if wMax > wMaxLim:
+       print(f"Invalid entry: {wMax} > 1, Setting wMax = {wMaxLim}") 
+    try:
+        wMin = int(input("wMin (rad/s), make sure > 0 rad/s: "))
+    except ValueError as e:
+        if "invalid literal for int()" in e.message:
+            print("Invalid input, setting wMin to 0 rad/s")
+        else:
+            print("Unkown error, setting wMin to 0 rad/s")
+        wMin = 0.5
+    if wMin < wMinLim:
+        print(f"Invalid entry. {wMin} < 0. Setting wMin = 0")
+        wMin = 0
+    elif wMin > wMax:
+        print(f"Invalid entry. {wMin} > wMax. Setting wMin = {wMax - 0.1}")
+        wMin = wMax - 0.1
+    vSel = [vMax*0.05 if vMax*0.05 > vMin else vMin][0]
+    wSel = [wMax*0.05 if wMax*0.05 > wMin else wMin][0]
+    print("Press 'T/Y' to increment/decrement linear velocity.")
+    print("Press 'G/H' to increment/decrement angular velocity.")
+    print(f"linear velocity: {vSel}")
+    print(f"angular velocity: {wSel}")
+    print("Starting main loop.\n Type Ctrl+C to stop")
+    lastCheck = time.time()
+    lastWrite = time.time()
+    lastPrint = time.time()
+    lastInput = time.time()
+    screwAxes = [SPData.joints[i].screwAx for i in range(SPData.lenData)]
+    try:
+        while True:
+                lastCheck = SReadAndParse(SPData, lastCheck, dtComm, 
+                                        localMu, homeObj, encAlg)[0]
+                if (time.time() - lastWrite >= dtComm):
+                    #Check for each motor if the current move is allowed 
+                    #within the joint limits
+                    SPData.CheckJointLim()
+                    for i in range(SPData.lenData):
+                        SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
+                                            f"{SPData.rotDirDes[i]}"
+                    localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
+                    lastWrite = time.time()
+                if (time.time() - lastPrint >= dtPrint):
+                    print(f"Speed: {SPData.mSpeed}, Direction: {SPData.rotDirDes}")
+                    print(f"Count: {SPData.totCount}, Homing: {SPData.homing}")
+                    lastPrint = time.time()
+                if (time.time() - lastInput >= dtInput):
+                    #Check for key-press, act accordingly
+                    vels = [vMin, vMax, vSel, wMin, wMax, wSel]
+                    V, vSel, wSel = CheckKeysEF(SPData, *vels)
+                    JSpace = mr.JacobianSpace(screwAxes, SPData.currAngle)
+                    dtheta = np.dot(np.linalg.pinv(JSpace), V)
+                    #Translate (virtual) joint speeds to motor speeds:
+                    dthetaComm = DThetaToComm(SPData, dtheta)
+                    #TODO: Translate into mSpeed variables!
+
+
+    except KeyboardInterrupt:
+        #Set motor speeds to zero & close serial.
+        localMu.write(f"{['0|0'] * SPData.lenData}\n".encode(encAlg))
+        time.sleep(dtComm)
+        localMu.__del__()
+        print("Quitting...")
+    
+    finally: #Always clean RPi pins!
+        homeObj.CleanPins()
+        return None
+    #
+
+def PegasusManualControl(method="joints"):
     ### INTANTIATE ROBOT INSTANCE ###
     #Inertia matrices
     iMat0 = np.diag([0.03584238, 0.02950513, 0.04859042])
@@ -129,108 +485,25 @@ def PegasusManualControl():
     ### END OF SERIAL COMMUNICATION SETUP ###
     homingPins = [3, 5, 7, 29, 31, 26]
     homeObj = Homing(homingPins)
+    if method == 'joint':
+        PegasusJointControl(SPData, localMu, dtComm, dtPrint, dtInput, 
+                            homeObj, encAlg)
 
-    mSpeedMax = int(input("mSpeedMax (0 - 255): "))
-    if mSpeedMax < 0 or mSpeedMax > 255:
-        print("Invalid entry, putting mSpeedMax at 120.")
-        mSpeedMax = 120
-    mSpeedMin = int(input("mSpeedMin (0 - 255): "))
-    if mSpeedMin > mSpeedMax:
-        print("mSpeedMin must be smaller than mSpeedMax.") 
-        if mSpeedMax - 10 > 0:
-            print(f"Setting mSpeedMin to {mSpeedMax - 10}.")
-            mSpeedMin = mSpeedMax - 10
-        else:
-            print("Setting mSpeedMin to 0")
-            mSpeedMin = 0
+    #elif method == 'end-effector':
+        #PegasusEFControl
     
-    mSpeedSel = mSpeedMin
+    return
 
-    pygame.init()
-    screen = pygame.display.set_mode([500, 500])
-    print("Starting main loop.\n Type Ctrl+C to stop")
-    print("Press 'C' to change from fast to slow speed.")
-    try:
-        lastCheck = time.time()
-        lastWrite = time.time()
-        lastPrint = time.time()
-        lastInput = time.time()
-        print(f"speed: {mSpeedSel}")
-        while True:
-            lastCheck = SReadAndParse(SPData, lastCheck, dtComm, 
-                                      localMu, homeObj, encAlg)[0]
-            if (time.time() - lastWrite >= dtComm):
-                #Check for each motor if the current move is allowed 
-                #within the joint limits
-                SPData.CheckJointLim()
-                for i in range(SPData.lenData):
-                    SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
-                                        f"{SPData.rotDirDes[i]}"
-                localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
-                lastWrite = time.time()
-            if (time.time() - lastPrint >= dtPrint):
-                print(f"Speed: {SPData.mSpeed}, Direction: {SPData.rotDirDes}")
-                print(f"Count: {SPData.totCount}, Homing: {SPData.homing}")
-                lastPrint = time.time()
-            if (time.time() - lastInput >= dtInput):
-                #Check for key-press, act accordingly
-                events = pygame.event.get()
-                for event in events:
-                    if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_q:
-                            SpeedUp(SPData, 0, 1, mSpeedSel)
-                        elif event.key == pygame.K_a:
-                            SpeedUp(SPData, 0, 0, mSpeedSel)
-                        elif event.key == pygame.K_w:
-                            SpeedUp(SPData, 1, 1, mSpeedSel)
-                        elif event.key == pygame.K_s:
-                            SpeedUp(SPData, 1, 0, mSpeedSel)
-                        elif event.key == pygame.K_e:
-                            SpeedUp(SPData, 2, 1, mSpeedSel)
-                        elif event.key == pygame.K_d:
-                            SpeedUp(SPData, 2, 0, mSpeedSel)
-                        elif event.key == pygame.K_r:
-                            SpeedUp(SPData, 3, 1, mSpeedSel)
-                        elif event.key == pygame.K_f:
-                            SpeedUp(SPData, 3, 0, mSpeedSel)
-                        elif event.key == pygame.K_t:
-                            SpeedUp(SPData, 4, 1, mSpeedSel)
-                        elif event.key == pygame.K_g:
-                            SpeedUp(SPData, 4, 0, mSpeedSel)
-                        elif event.key == pygame.K_c:
-                            mSpeedSel = ChangeSpeed(mSpeedSel, mSpeedMin, 
-                                                    mSpeedMax, 5, True)
-                        elif event.key == pygame.K_x:
-                            mSpeedSel = ChangeSpeed(mSpeedSel, mSpeedMin, 
-                                                    mSpeedMax, 5, False)
-
-                    elif event.type == pygame.KEYUP:
-                        if event.key == pygame.K_q or event.key == pygame.K_a:
-                            Break(SPData, 0)
-                        elif event.key == pygame.K_w or event.key == pygame.K_s:
-                            Break(SPData, 1)
-                        elif event.key == pygame.K_e or event.key == pygame.K_d:
-                            Break(SPData, 2)
-                        elif event.key == pygame.K_r or event.key == pygame.K_f:
-                            Break(SPData, 3)
-                        elif event.key == pygame.K_t or event.key == pygame.K_g:
-                            Break(SPData, 4)
-                    elif event.type == pygame.QUIT:
-                        raise KeyboardInterrupt()
-                lastInput = time.time()
-
-
-
-    except KeyboardInterrupt:
-        #Set motor speeds to zero & close serial.
-        localMu.write(f"{['0|0'] * lenData}\n".encode(encAlg))
-        time.sleep(dtComm)
-        localMu.__del__()
-        print("Quitting...")
-    
-    finally: #Always clean RPi pins!
-        homeObj.CleanPins()
-        return 0
 
 if __name__ == "__main__":
-    PegasusManualControl()
+    method = input("Please specify the desired type of control:\n" +
+                   "For joint control, type 'joint'. \n" +  
+                   "For end-effector control, type 'end-effector'")
+    methodBool = False
+    while not methodBool:
+        if method == 'joint' or method == 'end-effector':
+            methodBool = True
+        else:
+            method = input("invalid control method, please choose " + 
+                           "between 'joint' and 'end-effector'.")
+    PegasusManualControl(method)
