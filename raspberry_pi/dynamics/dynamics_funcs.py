@@ -42,30 +42,14 @@ def LossComp(tauComm: float, dtheta: float, dthetaPrev: float, tauStat: float,
                    np.multiply(bVisc, dtheta)
     return tauComm/eff
 
-def TauOut2Curr(tauComm: float, gRatio: float, km: float) -> float:
-    """Computes the to-be commanded current based on the desired 
-    output torque.
-    :param tauComm: Desired output torque based on inverse dynamics and
-                    additional estimated losses.
-    :param gRatio: Gearbox ratio (>1).
-    :param km: Motor constant in [Nm/A].
-    :return currMotor: Desired current in [A]."""
-    tauMotor = tauComm/gRatio
-    currMotor = tauMotor/km
-    return currMotor
-
-def Curr2MSpeed(currMotor: float) -> float:
-    """Converts current to PWM motor speed command.
-    :param currMotor: Desired current in [A]
-    :return mSpeed: PWM value in the range [0,255]."""
-    linFactor = 0 #TODO: FIND LINFACTOR!
-    mSpeed = currMotor *linFactor
-
 def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float], 
                 ddthetaList: List[float], Ftip: np.ndarray[float]) -> \
                 np.ndarray[float]:
-    """Computes the feed-forward torque based on the dynamic model of 
-    the robot.
+    """Computes the feed-forward torque based on the inverse dynamics 
+    of the robot.
+    NOTE: This function is used for robots with a shared fifth link. 
+    Robots having a 'pure' serial configuration can simply use the 
+    modern_robotics.InverseDynamics() function.
     :param robot: A Robot-class instance containing all characteristic
                   information of the robot.
     :param thetaList: List of currently desired joint angles.
@@ -73,7 +57,7 @@ def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float],
     :param ddthetaList: List of currently desired joint accelerations.
     :param Ftip: 6-vector representing the desired end-effector forces 
                  and torques in the end-effector frame(!).
-    :return FFTorque: List of feed-forward joint torques.
+    :return FFTorque: Array of feed-forward joint torques.
     """
     #TODO: checks for lists, checks for Ftip.
     g = np.array([0, 0, -9.81]) #gravity-vector in-line with the space frame!
@@ -102,11 +86,6 @@ def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float],
     
 #TODO: Add 'CheckTorque' func to abide limits.
 
-#Step 2: At each point, calculate the required torque of each motor
-#Step 2a: Remove joint 5's influence from all data --> 4R robot, perform calcs.
-#Step 2b: Remove joint 4's influence from all data --> 4R robot, perform calcs.
-#Step 2c: Check if torques for J0 --> J2 are the same
-#Step 2d: Torques --> Current & Dir. using I) gear ratio and II) torque constant
-#Step 2e: Current --> PWMSpeed using experimental factor.
-#Step 2f: at each timestep, PID + PWMSpeedFF
-
+def ForwardDyn():
+    """"""
+    mr.ForwardDynamics()
