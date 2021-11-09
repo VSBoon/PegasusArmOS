@@ -1,5 +1,7 @@
 import os
 import sys
+
+from kinematics.kinematic_funcs import IKSpace
 #Find directory path of current file
 current = os.path.dirname(os.path.realpath(__file__))
 #Find directory path of parent folder and add to sys path
@@ -7,15 +9,69 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 print("Importing local modules...")
-from classes import SerialData, Joint, Link, Robot, Homing
+from classes import InputError, SerialData, Joint, Link, Robot, Homing
+from util import PID, Tau2Curr, Curr2MSpeed
 from serial_comm.serial_comm import SReadAndParse, FindSerial, StartComms
+from kinematics.kinematic_funcs import IKSpace
+from dynamics.dynamics_funcs import FeedForward
 print("Importing independant modules...")
-from typing import Tuple
+from typing import Tuple, Union, List
 import serial
 import modern_robotics as mr
 import numpy as np
 import time
 import pygame
+
+def HoldPos(pos: Union[np.ndarray[float], List], pegasus: Robot, 
+            SPData: SerialData, kP: np.ndarray[float], 
+            kI: np.ndarray[float], kD: np.ndarray[float], 
+            termI: np.ndarray[float], ILim: np.ndarray[float], dt: float, 
+            errPrev: np.ndarray[float]) -> Tuple[List. np.ndarray[float]]:
+    """Hold a given position using feed forward and PID control.
+    :param pos: Desired configuration to hold, either as a list of 
+                joint angles or the SE(3) end-effector configuration.
+    :param pegasus: Robot object representing the arm.
+    :param SPData: SerialData object for communication and keeping 
+                   joint angles etc.
+    :param kP: nxn proportional matrix, typically an identity
+               matrix times a constant.
+    :param kI: nxn integral matrix, typically an identity matrix
+               times a constant.
+    :param kD: nxn difference matrix, typically an identity matrix
+               times a constant.
+    NOTE: To omit P-, I-, or D action, input kX = 0
+    :param termI: Accumulative integral term.
+    :param ILim: Integral term limiter for anti-integral windup.
+    :param dt: Time between each error calculation in seconds.
+    :param errPrev: error value from the previous PID control loop.
+    :return mSpeed: List of PWM motor speeds, in the range [0, 255].
+    NOTE: mSpeed should be remapped to [mSpeedMin, mSpeedMax].
+    :return termI: New accumulative intergral term.
+    """
+    #Translate pos into joint space
+    if type(pos) == list:
+        pass
+    elif pos.shape == (4,4): #Transformation matrix
+        isSE3 = mr.TestIfSE3(pos)
+        if not isSE3:
+            raise InputError("pos is neither a list of joint angles nor a " +\
+                             "transformation matrix.")
+        pos, success = IKSpace()
+        if not success:
+            raise ValueError("no solution to the IK problem was found.")
+    else:
+        raise InputError("pos is neither a list of joint angles nor a " +\
+                             "transformation matrix.")
+    dThetaDes = np.array([0 for i in range(len(pos))])
+    ddThetaDes = dThetaDes
+    FtipDes = np.array([0 for i in range(6)])
+    feedForwardT, termI = FeedForward(pegasus, pos, dThetaDes, ddThetaDes, FtipDes)
+    #NOTE: PID implicitely translates joint angle error to torques! 
+    #(i.e. kP is in Nm/rad, etc.)
+    PIDT, termI = PID(pos, SPData.currAngle, kP, kI, kD, termI, ILim, dt, errPrev)
+    FFwPID = feedForwardT + PIDT
+    mSpeed = [Curr2MSpeed(Tau2Curr(FFwPID[i])) for i in range(FFwPID.size)]
+    return mSpeed, termI
 
 def SpeedUpJ(SPData: SerialData, nJoint: int, rotDir: int, mSpeed: int):
     """Sets motor speed for a given joint.
@@ -414,8 +470,7 @@ def PegasusEFControl(SPData: SerialData, localMu: serial.Serial, dtComm:
     finally: #Always clean RPi pins!
         homeObj.CleanPins()
         return None
-    #
-
+    
 def PegasusManualControl(method="joints"):
     ### INTANTIATE ROBOT INSTANCE ###
     #Inertia matrices
@@ -493,7 +548,6 @@ def PegasusManualControl(method="joints"):
         #PegasusEFControl
     
     return
-
 
 if __name__ == "__main__":
     method = input("Please specify the desired type of control:\n" +
