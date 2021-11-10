@@ -190,7 +190,7 @@ class SerialData():
         #homeObj.bools is updated through interrupts.
         self.homing = homeObj.bool
 
-    def Dtheta2Mspeed(self, dtheta: np.ndarray[float], 
+    def Dtheta2Mspeed(self, dtheta: "np.ndarray[float]", 
                       dthetaMax: List[float], PWMMin: int, PWMMax: int):
         """Translates desired motor velocities in rad/s to PWM.
         :param dtheta: Numpy array of motor velocities in [rad/s].
