@@ -144,7 +144,9 @@ def Tau2Curr(tauComm: float, gRatio: float, km: float) -> float:
 def Curr2MSpeed(currMotor: float) -> float:
     """Converts current to PWM motor speed command.
     :param currMotor: Desired current in [A]
-    :return mSpeed: PWM value in the range [0,255]."""
+    :return mSpeed: PWM value in the range [0,255].
+    NOTE: mSpeed should still be normalized to [mSpeedMin, mSpeedMax]!
+    """
     linFactor = 2/255 #TODO: FIND ACCURATE LINFACTOR!
     mSpeed = currMotor *linFactor
     return mSpeed
@@ -171,7 +173,7 @@ def PID(ref: "np.ndarray[float]", Fdb: "np.ndarray[float]",
         :param errPrev: error value from the previous PID control loop.
         :return refWPID: Reference signal added with the PID signal.
         :return termI: The new accumulative integral term.
-        :retur err: The new error calculation.
+        :return err: The new error calculation.
         
         Example input:
         ref = [0, 1, 2, 3, 4]
