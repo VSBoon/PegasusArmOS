@@ -129,16 +129,20 @@ def ThetaInitGuess(psbHome: np.ndarray, psbTarget: np.ndarray, majorScrewJoints:
             thetaGuessList[i] = jointLimits[i][0]
     return thetaGuessList
 
-def Tau2Curr(tauComm: float, gRatio: float, km: float) -> float:
+def Tau2Curr(tauComm: float, gRatio: float, km: float, 
+             currLim: float) -> float:
     """Computes the to-be commanded current based on the desired 
     output torque.
     :param tauComm: Desired output torque based on inverse dynamics and
                     additional estimated losses.
     :param gRatio: Gearbox ratio (>1).
     :param km: Motor constant in [Nm/A].
+    :param currLim: Maximum allowed current to each motor in [A].
     :return currMotor: Desired current in [A]."""
     tauMotor = tauComm/gRatio
     currMotor = tauMotor/km
+    if currMotor > currLim:
+        currMotor == currLim
     return currMotor
 
 def Curr2MSpeed(currMotor: float) -> float:
