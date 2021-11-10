@@ -6,45 +6,48 @@ current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
 sys.path.append(parent)
 
-from kinematics.kinematic_funcs import IKSpace, FKSpace
-from classes import Joint, Link, Robot
+from classes import Robot
 from typing import List
 import modern_robotics as mr
 import numpy as np
 
+""" NOTE: IF NOT TESTED ON RPi, ALL MENTIONS OF RPi LIBRARY SHOULD BE
+    REMOVED FROM ALL IMPORTS BEFORE RUNNING THESE TESTS!
+"""
 
-def LossComp(tauComm: float, dtheta: float, dthetaPrev: float, tauStat: float, 
-            bVisc: float, tauKin: float, gRatio: float, eff: float) -> float:
+def LossComp(tauComm: float, dtheta: float,  tauStat: float, 
+            bVisc: float, tauKin: float, eff: float) -> float:
     """Adds friction according to a model utilizing static, viscous, 
     and kinetic friction coefficients. 
     :param tauComm: Desired torque based on inverse dynamics at the 
                     output shaft.
     :param dtheta: Desired joint velocity.
-    :param dthetaPrev: Desired joint velocities in the 
-                       previous time step.
     :param tauStat: Torque required to overcome static friction 
                     (occurs if dthetaPrev == 0).
     :param bVisc: Viscous friction coefficient in (N*m^2*s)/rad
     :param tauKin: Torque required to overcome kinetic friction.
                    NOTE: tauKin should be smaller than tauStat!
-    :param gRatio: Gearbox ratio (>1).
     :param eff: Efficiency (heat dissipation, gearbox losses, etc.)
     :return tauComm: Desired output torque, including friction- and
                      efficiency compensation.
     NOTE: All variables are taken w.r.t the output shaft, so after 
     the internal & external gearbox!
     """
-    if np.isclose(dthetaPrev, 0, atol=1e-04) and \
+    if np.isclose(dtheta, 0, atol=1e-04) and \
         not tauComm == 0: #Static friction
-        tauComm += tauStat*np.sign(dtheta)
+        if dtheta != 0:
+            dir = np.sign(dtheta)
+        else:
+            dir = np.sign(tauComm) #Reasonable approximation
+        tauComm += tauStat*dir
     elif not tauComm == 0: #Kinetic & viscous friction
         tauComm += tauKin*np.sign(dtheta) + \
-                   np.multiply(bVisc, dtheta)
+                   bVisc*dtheta
     return tauComm/eff
 
 def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float], 
-                ddthetaList: List[float], Ftip: np.ndarray[float]) -> \
-                np.ndarray[float]:
+                ddthetaList: List[float], Ftip: "np.ndarray[float]") -> \
+                "np.ndarray[float]":
     """Computes the feed-forward torque based on the inverse dynamics 
     of the robot.
     NOTE: This function is used for robots with a shared fifth link. 
@@ -85,7 +88,3 @@ def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float],
     return FFTorque
     
 #TODO: Add 'CheckTorque' func to abide limits.
-
-def ForwardDyn():
-    """"""
-    mr.ForwardDynamics()
