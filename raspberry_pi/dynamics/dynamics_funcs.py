@@ -86,5 +86,3 @@ def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float],
                                     screwFinal)[-1]
     FFTorque = np.append(FFTorque, lastTorque)
     return FFTorque
-    
-#TODO: Add 'CheckTorque' func to abide limits.
