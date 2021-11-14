@@ -28,6 +28,21 @@ class Link():
         else:
             self.Tii: np.ndarray = np.dot(mr.TransInv(prevLink.Tsi), Tsi)
     
+    def AddRotorInertia(self, iMatRot: np.ndarray, 
+                        gr: float):
+        """Adds the inertia of the motor rotor to the link's inertia 
+        matrix. Useful if the gear ratio is very high, as the apparent 
+        inertia of the rotor scales with the square of the gear ratio.
+        :param iMatRot: Inertia matrix of the rotor, as a reference to 
+                        the reference frame of the link, being aligned
+                        with the principle axes of inertia of the link.
+        :param gr: Gear ratio of the motor to the output shaft.
+        """
+
+        """Adding apparent mass to Gi[3:6, 3:6] is ommitted as it does 
+        not scale with the square of the gearbox ratio."""
+        self.Gi[0:3, 0:3] = self.Gi[0:3, 0:3] + iMatRot*(gr**2)
+
     def __repr__(self):
         return f"Link(Gi: {self.Gi}\nJoints: {self.joints}\nTsi: {self.Tsi})"
 
