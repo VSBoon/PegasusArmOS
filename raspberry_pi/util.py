@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List
+from typing import List, Tuple
     
 def screwsToMat(screws: List[np.ndarray]) -> np.ndarray:
     """Translates list of screw axes into a matrix desired by the 
@@ -129,11 +129,37 @@ def ThetaInitGuess(psbHome: np.ndarray, psbTarget: np.ndarray, majorScrewJoints:
             thetaGuessList[i] = jointLimits[i][0]
     return thetaGuessList
 
+def Tau2Curr(tauComm: float, gRatio: float, km: float, 
+             currLim: float) -> float:
+    """Computes the to-be commanded current based on the desired 
+    output torque.
+    :param tauComm: Desired output torque based on inverse dynamics and
+                    additional estimated losses.
+    :param gRatio: Gearbox ratio (>1).
+    :param km: Motor constant in [Nm/A].
+    :param currLim: Maximum allowed current to each motor in [A].
+    :return currMotor: Desired current in [A]."""
+    tauMotor = tauComm/gRatio
+    currMotor = tauMotor/km
+    if currMotor > currLim:
+        currMotor == currLim
+    return currMotor
+
+def Curr2MSpeed(currMotor: float) -> float:
+    """Converts current to PWM motor speed command.
+    :param currMotor: Desired current in [A]
+    :return mSpeed: PWM value in the range [0,255].
+    NOTE: mSpeed should still be normalized to [mSpeedMin, mSpeedMax]!
+    """
+    linFactor = 2/255 #TODO: FIND ACCURATE LINFACTOR!
+    mSpeed = currMotor *linFactor
+    return mSpeed
+
 def PID(ref: "np.ndarray[float]", Fdb: "np.ndarray[float]",
         kP: "np.ndarray[float]", kI: "np.ndarray[float]", 
         kD: "np.ndarray[float]", termI: "np.ndarray[float]", 
         ILim: "np.ndarray[float]", dt: float, errPrev: 
-        "np.ndarray[float]") -> "np.ndarray[float]":
+        "np.ndarray[float]") -> Tuple["np.ndarray[float]"]:
         """Adds discrete PID error control to a reference signal, 
         given a feedback signal and PID constants.
         :param ref: Reference / Feed-forward signal.
@@ -151,7 +177,7 @@ def PID(ref: "np.ndarray[float]", Fdb: "np.ndarray[float]",
         :param errPrev: error value from the previous PID control loop.
         :return refWPID: Reference signal added with the PID signal.
         :return termI: The new accumulative integral term.
-        :retur err: The new error calculation.
+        :return err: The new error calculation.
         
         Example input:
         ref = [0, 1, 2, 3, 4]
