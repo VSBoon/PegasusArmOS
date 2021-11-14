@@ -9,6 +9,7 @@ sys.path.append(parent)
 from classes import SerialData, InputError, Joint, Link, Robot, Homing
 from typing import List, Tuple
 from trajectory_generation.traj_gen import TrajGen, TrajDerivatives
+from gpio.gpio_funcs import RPiCleanPins
 import serial
 import serial.tools.list_ports
 import time
@@ -299,5 +300,5 @@ if __name__ == "__main__":
         localMu.write(f"{['0|0|0'] * lenData}\n".encode(encAlg))
         time.sleep(dtComm)
         localMu.__del__()
-        homeObj.CleanPins()
+        RPiCleanPins()
         print("Ctrl+C pressed, quitting...")
