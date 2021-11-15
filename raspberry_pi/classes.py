@@ -1,6 +1,7 @@
 import numpy as np
 import modern_robotics as mr
 import RPi.GPIO as gpio
+import time
 from typing import List
 
 class Link():
@@ -123,7 +124,8 @@ class Homing():
         self.bools = [0 for i in range(len(homingPins))]
         gpio.setmode(gpio.BOARD)
         for i in range(len(self.pins)):
-            gpio.setup(self.pins[i], gpio.IN)
+            #Setup with internal pull-down resistor
+            gpio.setup(self.pins[i], gpio.IN, pull_up_down=gpio.PUD_DOWN)
             gpio.add_event_detect(homingPins[i], gpio.BOTH, callback = \
             lambda x: self.HomeRoutine(i))
 
@@ -336,3 +338,12 @@ class InputError(BaseException):
         self.message = message
     def __str__(self):
         return self.message
+
+if __name__ == "__main__":
+        #Test homeObj
+        now = time.time()
+        RPiHoming = Homing([3,5,7,11,13,15])
+        while time.time() - now < 5:
+                print(RPiHoming.bools)
+        print("Quitting...")
+        RPiHoming.CleanPins()

@@ -621,7 +621,7 @@ def PegasusManualControl(method="joints"):
     localMu = StartComms(port, baudRate)
     encAlg = "utf-8"
     ### END OF SERIAL COMMUNICATION SETUP ###
-    homingPins = [3, 5, 7, 29, 31, 26]
+    homingPins = [7,11,13,15,29,31]
     homeObj = Homing(homingPins)
     holdStill = True
     kP = float(input("kP: "))*np.eye(SPData.lenData)
