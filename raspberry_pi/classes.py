@@ -84,7 +84,8 @@ class Robot():
     """Overarching robot class, containing all joints & links 
     described using their respective class instances.
     """
-    def __init__(self, joints: List[Joint], links: List[Link]):
+    def __init__(self, joints: List[Joint], links: List[Link], 
+                 TiEF: np.ndarray):
         """ Constructor for Robot class.
         :param joints: A list of Joint objects, with the joints 
                        being in ascending order from the joint 
@@ -93,6 +94,9 @@ class Robot():
         :param links: A list of Link objects, with the links being 
                       in ascending order from the link closest to 
                       the robot's connection to the fixed world.
+        :param TiEF: Transformation matrix taking the final joint frame
+                     to the end-effector frame in the home 
+                     configuration.
         """
         self.joints: List[Joint] = joints
         self.screwAxes: List[np.ndarray] = [joint.screwAx for joint in 
@@ -102,6 +106,7 @@ class Robot():
         self.GiList: List[np.ndarray] = [link.Gi for link in links]
         
         self.TllList: List[np.ndarray] = [link.Tii for link in links]
+        self.TllList.append(TiEF)
         self.TsbHome: np.ndarray = self.TllList[-1]
     
     def __repr__(self):

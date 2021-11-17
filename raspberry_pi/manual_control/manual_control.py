@@ -21,11 +21,11 @@ import numpy as np
 import time
 import pygame
 
-def HoldPos(pos: Union[np.ndarray[float], List], pegasus: Robot, 
-            SPData: SerialData, kP: np.ndarray[float], 
-            kI: np.ndarray[float], kD: np.ndarray[float], 
-            termI: np.ndarray[float], ILim: np.ndarray[float], dt: float, 
-            errPrev: np.ndarray[float]) -> Tuple[List. np.ndarray[float]]:
+def HoldPos(pos: Union["np.ndarray[float]", List], pegasus: Robot, 
+            SPData: SerialData, kP: "np.ndarray[float]", 
+            kI: "np.ndarray[float]", kD: "np.ndarray[float]", 
+            termI: "np.ndarray[float]", ILim: "np.ndarray[float]", dt: float, 
+            errPrev: "np.ndarray[float]") -> Tuple[List, "np.ndarray[float]"]:
     """Hold a given position using feed forward and PID control.
     :param pos: Desired configuration to hold, either as a list of 
                 joint angles or the SE(3) end-effector configuration.
@@ -71,7 +71,8 @@ def HoldPos(pos: Union[np.ndarray[float], List], pegasus: Robot,
     explicitely by multiplying kP, kI, and kD with the mass matrix, 
     but since the mass matrix is questionable in this case, we omit it.
     """
-    PIDT, termI, err = PID(pos, SPData.currAngle, kP, kI, kD, termI, ILim, dt, errPrev)
+    PIDT, termI, err = PID(pos, SPData.currAngle, kP, kI, kD, termI, ILim, dt, 
+                           errPrev)
     FFwPID = feedForwardT + PIDT
     mSpeed = [Curr2MSpeed(Tau2Curr(FFwPID[i], pegasus.joints[i].gearRatio, 
               pegasus.joints[i].km, 2)) for i in range(FFwPID.size)]
@@ -189,8 +190,8 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
                         serial.Serial, dtComm: float, dtPrint: float, 
                         dtInput: float, homeObj: Homing, encAlg: 
                         str = 'utf-8', holdStill: bool = False, kP: 
-                        np.ndarray[float]=0, kI: np.ndarray[float]=0, 
-                        kD: np.ndarray[float]=0, ILim=[100,100,100,100,100]):
+                        "np.ndarray[float]"=0, kI: "np.ndarray[float]"=0, 
+                        kD: "np.ndarray[float]"=0, ILim=[100,100,100,100,100]):
     """Allows one to move each joint of the Pegasus arm independantly.
     :param SPData: SerialData object for communication.
     :param localMu: Serial object to connect to local microcontroller.
@@ -282,15 +283,14 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
         localMu.write(f"{['0|0'] * SPData.lenData}\n".encode(encAlg))
         time.sleep(dtComm)
         localMu.__del__()
-        print("Quitting...")
-    
-    finally: #Always clean RPi pins!
         homeObj.CleanPins()
-        return None
+        print("Quitting...")
+        return
+    print("This should never happen!")
 
 def CheckKeysEF(SPData: SerialData, vMin: float, vMax: float, vSel: float, 
                 wMin: float, wMax: float, wSel: float, dVel: float= 0.02) \
-                -> Tuple(np.ndarray[float], float, float):
+                -> Tuple["np.ndarray[float]", float, float]:
     """Checks for key-presses and alter velocity components
     and other factors accordingly.\n
     KEY-BINDINGS (all in the space frame {s}):
@@ -390,8 +390,8 @@ def CheckKeysEF(SPData: SerialData, vMin: float, vMax: float, vSel: float,
             raise KeyboardInterrupt()
         return V, vSel, wSel, noInput
 
-def DThetaToComm(SPData: SerialData, dtheta: np.ndarray[float]) \
-                -> np.ndarray[float]:
+def DThetaToComm(SPData: SerialData, dtheta: "np.ndarray[float]") \
+                -> "np.ndarray[float]":
     """Translated the desired angular velocities along the screw axes
     into the desired angular velocities at the input shafts of the 
     Amatrol Pegasus robot arm.
@@ -548,11 +548,8 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
         localMu.write(f"{['0|0'] * SPData.lenData}\n".encode(encAlg))
         time.sleep(dtComm)
         localMu.__del__()
-        print("Quitting...")
-    
-    finally: #Always clean RPi pins!
         homeObj.CleanPins()
-        return None
+        print("Quitting...")
     
 def PegasusManualControl(method="joints"):
     ### INTANTIATE ROBOT INSTANCE ###
@@ -563,7 +560,7 @@ def PegasusManualControl(method="joints"):
     iMat34 = np.diag([0.00363966, 0.00347835, 0.00041124])
     massList = [4.99, 0.507, 0.420, 0.952, 0.952]
     #Transformation matrices from CoM of links with principle axes of
-    #inertia to the space frame (Tsi):
+    #inertia to the space frame (Tsi), at the home configuration:
     Tsi0 = np.array([[0.3804 ,-0.9215,0.0786 ,-0.0103],
                      [0.8774 ,0.3864 ,0.2843 ,-0.0292],
                      [-0.2924,-0.0392,0.9555 ,0.0642 ],
@@ -580,6 +577,12 @@ def PegasusManualControl(method="joints"):
                       [-0.0004,1.0000 ,0.0002 ,-0.0059],
                       [-0.9995,0.0004 ,-0.0326,0.3504 ],
                       [0      ,0      ,0      ,1      ]])
+    #Transformation matrix taking the final link frame to the end-effector
+    #frame at the home configration
+    TiEF = np.array([[0, 0, 1, 0.2650],
+                     [0, 1, 0, 0.2106],
+                     [-1,0, 0, 0.00593],
+                     [0, 0, 0, 1    ]]
     #Screw axes in the Space Frame {s}
     S0 = np.array([0,0,1,0,0,0])
     S1 = np.array([0,1,0,-0.0035,0,0.126])
@@ -593,18 +596,21 @@ def PegasusManualControl(method="joints"):
     lims3 = [-np.pi, 0.25*np.pi] #-180 deg, +45 deg.
     lims4 = [-np.pi, np.pi] #+/- 180 deg.
     limsTest = [-0.1*np.pi, 0.1*np.pi]
-    cpr = 1440
+    cpr = 520
+    #Motor constant at INPUT shaft!
+    km = [22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3),
+          22.7*10**(-3), .7*10**(-3), 9.2*10**(-3)] 
     gearRatioList = [19.7*50, 19.7*50, (65.5*20)/9, (65.5*20)/9, (127.7*32)/9]
     L0 = Link(iMat0, massList[0], None, Tsi0)
     L1 = Link(iMat1, massList[1], L0, Tsi1)
     L2 = Link(iMat2, massList[2], L1, Tsi2)
     L34 = Link(iMat34, massList[3], L2, Tsi34)
-    J0 = Joint(S0, [None, L0], gearRatioList[0], cpr, lims0)
-    J1 = Joint(S1, [L0, L1], gearRatioList[1], cpr, lims1)
-    J2 = Joint(S2, [L1, L2], gearRatioList[2], cpr, lims2)
-    J3 = Joint(S3, [L2,34], gearRatioList[3], cpr, lims3)
-    J4 = Joint(S4, [L2,L34], gearRatioList[4], cpr, lims4)
-    Pegasus = Robot([J0, J1, J2, J3, J4], [L0, L1, L2, L34])
+    J0 = Joint(S0, [None, L0], gearRatioList[0], km[0], cpr, lims0)
+    J1 = Joint(S1, [L0, L1], gearRatioList[1], km[1], cpr, lims1)
+    J2 = Joint(S2, [L1, L2], gearRatioList[2], km[2], cpr, lims2)
+    J3 = Joint(S3, [L2,34], gearRatioList[3], km[3], cpr, lims3)
+    J4 = Joint(S4, [L2,L34], gearRatioList[4], km[4], cpr, lims4)
+    Pegasus = Robot([J0, J1, J2, J3, J4], [L0, L1, L2, L34, L34], TiEF)
     ### END OF ROBOT INITIATION ###
 
     ### SETUP SERIAL COMMUNICATION ###
@@ -613,7 +619,8 @@ def PegasusManualControl(method="joints"):
     desAngles = [0 for i in range(lenData)]
     maxDeltaAngles = [np.pi for i in range(lenData)]
     tolAngles = [0.001*np.pi for i in range(lenData)]
-    SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngles, Pegasus.joints)
+    SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngles, 
+                        Pegasus.joints)
     dtComm = 0.005 #Make sure this aligns with dtComm in C++ code.
     dtPrint = 1
     dtInput = 0.03 #approximately 30 fps, also avoids window crashing
@@ -633,14 +640,15 @@ def PegasusManualControl(method="joints"):
                             dtInput, homeObj, encAlg, holdStill, kP, kI, kD, 
                             ILim) 
     elif method == 'end-effector':
-        PegasusEFControl(SPData, localMu, dtComm, dtPrint, dtInput, homeObj, encAlg)
+        PegasusEFControl(SPData, localMu, dtComm, dtPrint, dtInput, homeObj, 
+                         encAlg)
     
     return
 
 if __name__ == "__main__":
     method = input("Please specify the desired type of control:\n" +
                    "For joint control, type 'joint'. \n" +  
-                   "For end-effector control, type 'end-effector'")
+                   "For end-effector control, type 'end-effector'\n")
     methodBool = False
     while not methodBool:
         if method == 'joint' or method == 'end-effector':
