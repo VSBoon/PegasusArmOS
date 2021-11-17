@@ -204,12 +204,16 @@ class SerialData():
                     self.currAngle[i] = self.totCount[i]
             else:
                 self.currAngle[i] = self.totCount[i] * self.joints[i].enc2Theta
-            if i == 3 or i == 4:
+            if i == 2 or i == 3:
                 """Due to the unique mechanics of the robot, the 
-                encoder only measures the absolute angle of 3 or 4, 
-                not relative to 2 or 3, respectively.
+                encoder only measures the absolute angle of these joints,
+                not relative to the previous joint.
                 """
-                self.currAngle[i] -= self.currAngle[i-1] 
+                self.currAngle[i] -= self.totCount[i-1]*\
+                                     self.joints[i-1].enc2Theta
+            elif i == 4:
+                    self.currAngle[i] -= self.totCount[i-2]*\
+                                         self.joints[i-2].enc2Theta
         #homeObj.bools is updated through interrupts.
         self.homing = homeObj.bools
 

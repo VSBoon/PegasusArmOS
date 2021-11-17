@@ -290,6 +290,7 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
             if (time.time() - lastPrint >= dtPrint):
                 print(f"Speed: {SPData.mSpeed}, Direction: {SPData.rotDirDes}")
                 print(f"Count: {SPData.totCount}, Homing: {SPData.homing}")
+                print(f"Angle: {['%.2f' % elem for elem in SPData.currAngle]}")
                 lastPrint = time.time()
             if (time.time() - lastInput >= dtInput):
                 #Check for key-press, act accordingly
@@ -547,6 +548,7 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
                 if (time.time() - lastPrint >= dtPrint):
                     print(f"Speed: {SPData.mSpeed}, Direction: {SPData.rotDirDes}")
                     print(f"Count: {SPData.totCount}, Homing: {SPData.homing}")
+                    print(f"Angle: {SPData.currAngle}")
                     lastPrint = time.time()
                 if (time.time() - lastInput >= dtInput):
                     #Check for key-press, act accordingly
@@ -641,7 +643,8 @@ def PegasusManualControl(method="joints"):
     #Motor constant at INPUT shaft!
     km = [22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3),
           22.7*10**(-3), .7*10**(-3), 9.2*10**(-3)] 
-    gearRatioList = [19.7*50, 19.7*50, (65.5*20)/9, (65.5*20)/9, (127.7*32)/9]
+    gearRatioList = [19.7*50, 19.7*25, (127.7*32)/9, (65.5*20)/9, 
+                     (65.5*20)/9, 19.5]
     L0 = Link(iMat0, massList[0], None, Tsi0)
     L1 = Link(iMat1, massList[1], L0, Tsi1)
     L2 = Link(iMat2, massList[2], L1, Tsi2)
