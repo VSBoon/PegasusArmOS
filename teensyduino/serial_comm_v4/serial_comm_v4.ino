@@ -30,9 +30,11 @@ int rotDir[nCommands] = {0}; //Actual direction
 //int curr[nCommands] = {0};
 char totCountBuff[nCommands][10]; //Supports long's up to +/-10.000.000 counts
 char rotDirBuff[nCommands][2];
+//char mSpeedBuff[nCommands][4]; //debug
+char rotCCWBuff[nCommands][2]; //debug
 //char currBuff[nCommands][5];
 
-int dtComm = 5; //In milliseconds. Make sure this aligns with dtComm in Python code!
+int dtComm = 200; //In milliseconds. Make sure this aligns with dtComm in Python code!
 //int dtCurr = 20;
 float errTime = 1.7; //In microseconds!
 
@@ -61,19 +63,19 @@ void loop() {
   for (int i = 0; i < nCommands; i++) {
     if (mSpeed[i] != mSpeedPrev[i]) {
       //TODO: CHECK IF HOMING == 1 IMPLIES NEED FOR BREAK, OR HOMING == 0!
-      if (mSpeed[i] == 0 || homing[i] == 1) { //Hard break
-        digitalWrite(mPins[i][0], HIGH);
-        digitalWrite(mPins[i][1], HIGH); 
+      if (mSpeed[i] == 0) { //Soft break, should change to hard
+        analogWrite(mPins[i][0], 0);
+        analogWrite(mPins[i][1], 0); 
       } else if (rotCCW[i] == 0) {
         analogWrite(mPins[i][1], mSpeed[i]);
-        digitalWrite(mPins[i][0], LOW);
+        analogWrite(mPins[i][0], 0);
       } else if (rotCCW[i] == 1) {
         analogWrite(mPins[i][0], mSpeed[i]);
-        digitalWrite(mPins[i][1], LOW);
+        analogWrite(mPins[i][1], 0);
       }
     }
+    mSpeedPrev[i] = mSpeed[i];
   }
-  mSpeedPrev[0] = mSpeed[0];
   
 //  if (senseTimer > dtCurr) {
 //    //Read current sensor
@@ -89,10 +91,16 @@ void loop() {
       for (int i = 0; i < nCommands; i++) {
         ltoa(totCount[i], totCountBuff[i], 10);
         itoa(rotDir[i], rotDirBuff[i], 10);
+        //itoa(mSpeed[i], mSpeedBuff[i], 10); //Debug
+        itoa(rotCCW[i], rotCCWBuff[i], 10); //Debug
         Serial.write('[');
         Serial.write(totCountBuff[i]);
         Serial.write('|');
         Serial.write(rotDirBuff[i]);
+        //Serial.write('|'); //Debug
+        //Serial.write(mSpeedBuff[i]); //Debug
+        Serial.write('|'); //Debug
+        Serial.write(rotCCWBuff[i]); //Debug
         Serial.write(']');
       }
       Serial.write('\r');
@@ -114,11 +122,11 @@ void ParseCommand(String com) {
   while (parseIndex < com.length() && commandIt < nCommands) {
     volatile byte startIndex = com.indexOf("'", parseIndex); //Finds first '
     volatile byte sepIndex1 = com.indexOf("|", parseIndex);
-    volatile byte sepIndex2 = com.indexOf("|", sepIndex1);
+    volatile byte sepIndex2 = com.indexOf("|", sepIndex1+1);
     volatile byte endIndex = com.indexOf("'", startIndex + 1); //Finds last '
     mSpeed[commandIt] = com.substring(startIndex + 1, sepIndex1).toInt(); //+1 to omit first "'"
-    rotCCW[commandIt] = com.substring(sepIndex1 + 1, sepIndex2).toInt();
-    homing[commandIt] = com.substring(sepIndex2 + 1, endIndex).toInt();  //HAS NOT BEEN TESTED YET!!!
+    rotCCW[commandIt] = com.substring(sepIndex1 + 1, sepIndex2).toInt(); //removed +1!
+    homing[commandIt] = com.substring(sepIndex2 + 1, endIndex).toInt();
     parseIndex = endIndex + 1; //Start parsing the next data group
     commandIt++;
   }

@@ -129,15 +129,20 @@ def ChangeSpeedJ(mSpeedSel: int, mSpeedMin: int, mSpeedMax: int, dSpeed: int,
 
 def CheckKeysJoint(SPData: SerialData, pressed: Dict[str, bool], 
                    mSpeedMin: int, mSpeedMax: int, mSpeedSel: int) \
-                   -> bool:
+                   -> Tuple[bool, Dict[str, bool], int]:
     """Checks for key-presses and executes joint control commands 
     accordingly.
     All mSpeed values should be an integer in the range [0, 255].
     :param SPData: SerialData object for communication.
-    :param pressed: Dictionary of booleans to keep track of keyboard status.
+    :param pressed: Dictionary of booleans to keep track of keyboard 
+                    status.
     :param mSpeedSel: The current selected motor speed.
     :param mSpeedMin: The minimal motor speed.
     :param mSpeedMax: The maximal motor speed.
+    :return noInput: Bool indicating no new keyboard events.
+    :return pressed: Updated dictionary of booleans to keep track of
+                     of keyboard status.
+    :return mSpeedSel: Selected motor speed
     """
     events = pygame.event.get()
     if len(events) == 0:
@@ -217,7 +222,7 @@ def CheckKeysJoint(SPData: SerialData, pressed: Dict[str, bool],
                 BreakJ(SPData, 4)
         elif event.type == pygame.QUIT:
             raise KeyboardInterrupt()
-    return noInput, pressed
+    return noInput, pressed, mSpeedSel
 
 def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu: 
                         serial.Serial, dtComm: float, dtPrint: float, 
@@ -295,8 +300,9 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
             if (time.time() - lastInput >= dtInput):
                 #Check for key-press, act accordingly
                 noInputPrev = noInput
-                noInput, pressed = CheckKeysJoint(SPData, pressed, 
-                                   mSpeedMin, mSpeedMax, mSpeedSel)
+                noInput, pressed, mSpeedSel = CheckKeysJoint(SPData, 
+                                   pressed, mSpeedMin, mSpeedMax, 
+                                   mSpeedSel)
                 if holdStill:
                     if noInput and not any(list(pressed.values())):
                         if noInput != noInputPrev: #Initialize PID
@@ -674,7 +680,7 @@ def PegasusManualControl(method="joints"):
     ### END OF SERIAL COMMUNICATION SETUP ###
     homingPins = [7,11,13,15,29,31]
     homeObj = Homing(homingPins)
-    holdStill = True
+    holdStill = False
     kP = float(input("kP: "))*np.eye(len(Pegasus.joints))
     kI = float(input("kI: "))*np.eye(len(Pegasus.joints))
     kD = float(input("kD: "))*np.eye(len(Pegasus.joints))
