@@ -195,13 +195,15 @@ def PID(ref: "np.ndarray[float]", Fdb: "np.ndarray[float]",
         [0. 0. 0. 0. 0. ],
         [ 0.  -0.1  0.1 -0.5  0. ])
         """
-        err = ref - Fdb
+        err = np.array([ref[i] - Fdb[i] for i in range(ref.size)])
         termP = np.dot(kP, err)
-        if any(abs(termI) >= ILim):
-            termI = [np.sign(termI[i])*ILim[i] if termI[i] >= ILim[i] else termI[i] for i in range(err.size)]
+        for i in range(err.size):
+            if abs(termI[i]) >= ILim[i]:
+                termI[i] = np.sign(termI[i])*ILim[i]
+
         else: #Trapezoidal integration
-            trpz = dt*(errPrev + err)/2
+            trpz = dt*(np.add(errPrev, err))/2
             np.add(termI, np.dot(kI, trpz), out=termI, casting="unsafe")
-        termD = np.dot(kD, (err - errPrev)/dt)
-        refWPID = ref + termP + termI + termD
+        termD = np.dot(kD, (np.subtract(err, errPrev)/dt))
+        refWPID = np.add(np.add(np.add(ref, termP), termI), termD)
         return refWPID, termI, err

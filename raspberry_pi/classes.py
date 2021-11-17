@@ -85,7 +85,7 @@ class Robot():
     described using their respective class instances.
     """
     def __init__(self, joints: List[Joint], links: List[Link], 
-                 TiEF: np.ndarray):
+                 TsbHome: np.ndarray):
         """ Constructor for Robot class.
         :param joints: A list of Joint objects, with the joints 
                        being in ascending order from the joint 
@@ -94,9 +94,9 @@ class Robot():
         :param links: A list of Link objects, with the links being 
                       in ascending order from the link closest to 
                       the robot's connection to the fixed world.
-        :param TiEF: Transformation matrix taking the final joint frame
-                     to the end-effector frame in the home 
-                     configuration.
+        :param TsbHome: Transformation matrix describing the end-
+                        effector {b} in the space frame {s} in the home
+                        configuration, i.e. all theta = 0.
         """
         self.joints: List[Joint] = joints
         self.screwAxes: List[np.ndarray] = [joint.screwAx for joint in 
@@ -106,6 +106,7 @@ class Robot():
         self.GiList: List[np.ndarray] = [link.Gi for link in links]
         
         self.TllList: List[np.ndarray] = [link.Tii for link in links]
+        TiEF = np.dot(mr.TransInv(links[-1].Tsi), TsbHome)
         self.TllList.append(TiEF)
         self.TsbHome: np.ndarray = self.TllList[-1]
     
@@ -210,7 +211,7 @@ class SerialData():
                 """
                 self.currAngle[i] -= self.currAngle[i-1] 
         #homeObj.bools is updated through interrupts.
-        self.homing = homeObj.bool
+        self.homing = homeObj.bools
 
     def Dtheta2Mspeed(self, dtheta: "np.ndarray[float]", 
                       dthetaMax: List[float], PWMMin: int, PWMMax: int):

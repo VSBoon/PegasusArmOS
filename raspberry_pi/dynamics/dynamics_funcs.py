@@ -89,3 +89,5 @@ def FeedForward(robot: Robot, thetaList: np.ndarray, dthetaList: np.ndarray,
     lastTorque = mr.InverseDynamics(thetaList, dthetaList, ddthetaList, g, \
                                     Ftip, TllFinal, GiFinal, \
                                     sListFinal)[-1]
+    FFTorque = np.append(FFTorque, lastTorque)
+    return FFTorque

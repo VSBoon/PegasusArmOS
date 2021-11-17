@@ -50,6 +50,8 @@ def HoldPos(pos: Union["np.ndarray[float]", List], pegasus: Robot,
     """
     #Translate pos into joint space
     if type(pos) == list:
+        pos = np.array(pos)
+    elif pos.size == errPrev.size:
         pass
     elif pos.shape == (4,4): #Transformation matrix
         isSE3 = mr.TestIfSE3(pos)
@@ -71,9 +73,9 @@ def HoldPos(pos: Union["np.ndarray[float]", List], pegasus: Robot,
     explicitely by multiplying kP, kI, and kD with the mass matrix, 
     but since the mass matrix is questionable in this case, we omit it.
     """
-    PIDT, termI, err = PID(pos, SPData.currAngle, kP, kI, kD, termI, ILim, dt, 
-                           errPrev)
-    FFwPID = feedForwardT + PIDT
+    PIDT, termI, err = PID(pos, np.array(SPData.currAngle), kP, kI, kD, 
+                           termI, ILim, dt, errPrev)
+    FFwPID = np.add(feedForwardT, PIDT)
     mSpeed = [Curr2MSpeed(Tau2Curr(FFwPID[i], pegasus.joints[i].gearRatio, 
               pegasus.joints[i].km, 2)) for i in range(FFwPID.size)]
     return mSpeed, termI, err
@@ -260,13 +262,15 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
             if (time.time() - lastInput >= dtInput):
                 #Check for key-press, act accordingly
                 noInputPrev = noInput
-                noInput = CheckKeysJoint(SPData, mSpeedMin, mSpeedMax, mSpeedSel)
+                noInput = CheckKeysJoint(SPData, mSpeedMin, mSpeedMax, 
+                                         mSpeedSel)
                 if holdStill:
                     if noInput:
                         if noInput != noInputPrev: #Initialize PID
-                            pos = SPData.currAngle
-                            err = [0 for i in range(SPData.lenData)]
-                            termI = [0 for i in range(SPData.lenData)]
+                            pos = np.array(SPData.currAngle)
+                            err = np.array([0 for i in range(SPData.lenData)])
+                            termI = np.array([0 for i in 
+                                              range(SPData.lenData)])
                         mSpeed, termI, err = HoldPos(pos, pegasus, 
                         SPData, kP, kI, kD, termI, ILim, dtComm, err)
                         for i in range(SPData.lenData): #Remap mSpeed
@@ -561,28 +565,28 @@ def PegasusManualControl(method="joints"):
     massList = [4.99, 0.507, 0.420, 0.952, 0.952]
     #Transformation matrices from CoM of links with principle axes of
     #inertia to the space frame (Tsi), at the home configuration:
-    Tsi0 = np.array([[0.3804 ,-0.9215,0.0786 ,-0.0103],
-                     [0.8774 ,0.3864 ,0.2843 ,-0.0292],
-                     [-0.2924,-0.0392,0.9555 ,0.0642 ],
-                     [0      ,0      ,0      ,1      ]])
-    Tsi1 = np.array([[-0.0002,0.0008 ,-1.0000,0.0350 ],
-                     [0.4553 ,0.8903 ,0.0007 ,-0.0083],
-                     [0.8903 ,-0.4553,-0.0006,0.1666 ],
-                     [0      ,0      ,0      ,1      ]])
-    Tsi2 = np.array([[-0.9966,0.0819 ,-0.0003,0.0814 ],
-                     [-0.0819,-0.9966,0.0008 ,-0.0083],
-                     [-0.0002,0.0008 ,1.0000 ,0.3550 ],
-                     [0      ,0      ,0      ,1      ]])
-    Tsi34 = np.array([[-0.0326,0.0002 ,-0.9995,0.2640 ],
-                      [-0.0004,1.0000 ,0.0002 ,-0.0059],
-                      [-0.9995,0.0004 ,-0.0326,0.3504 ],
-                      [0      ,0      ,0      ,1      ]])
+    Tsi0 = np.array([[ 0.437, 0.824,-0.361,-0.0406],
+                     [-0.888, 0.459,-0.029,-0.0349],
+                     [ 0.142, 0.333, 0.932, 0.0580],
+                     [0    , 0     , 0    , 1     ]])
+    Tsi1 = np.array([[ 0.054, 0.737, 0.674, 0.0002],
+                     [ 0.045, 0.672,-0.739,-0.0356],
+                     [-0.998, 0.070, 0.003, 0.1603],
+                     [0    , 0     , 0    , 1     ]])
+    Tsi2 = np.array([[-0.003, 0.082, 0.997, 0.0034],
+                     [ 0.001, 0.997,-0.082,-0.0183],
+                     [-1.000, 0.001,-0.003, 0.4014],
+                     [0    , 0     , 0    , 1     ]])
+    Tsi34 = np.array([[-0.999, 0.000, -0.035, 0.0076],
+                      [0.000, -1.000, -0.000,-0.0159],
+                      [-0.035, -0.000, 0.999, 0.5840],
+                      [0    , 0     , 0    , 1     ]])
     #Transformation matrix taking the final link frame to the end-effector
     #frame at the home configration
-    TiEF = np.array([[0, 0, 1, 0.2650],
-                     [0, 1, 0, 0.2106],
-                     [-1,0, 0, 0.00593],
-                     [0, 0, 0, 1    ]]
+    TsbHome = np.array([[1,0,0, 0.1474],
+                        [0,1,0,-0.0168],
+                        [0,0,1, 0.5853],
+                        [0,0,0, 1     ]])
     #Screw axes in the Space Frame {s}
     S0 = np.array([0,0,1,0,0,0])
     S1 = np.array([0,1,0,-0.0035,0,0.126])
@@ -610,7 +614,7 @@ def PegasusManualControl(method="joints"):
     J2 = Joint(S2, [L1, L2], gearRatioList[2], km[2], cpr, lims2)
     J3 = Joint(S3, [L2,34], gearRatioList[3], km[3], cpr, lims3)
     J4 = Joint(S4, [L2,L34], gearRatioList[4], km[4], cpr, lims4)
-    Pegasus = Robot([J0, J1, J2, J3, J4], [L0, L1, L2, L34, L34], TiEF)
+    Pegasus = Robot([J0, J1, J2, J3, J4], [L0, L1, L2, L34, L34], TsbHome)
     ### END OF ROBOT INITIATION ###
 
     ### SETUP SERIAL COMMUNICATION ###
@@ -634,7 +638,7 @@ def PegasusManualControl(method="joints"):
     kP = float(input("kP: "))*np.eye(SPData.lenData)
     kI = float(input("kI: "))*np.eye(SPData.lenData)
     kD = float(input("kD: "))*np.eye(SPData.lenData)
-    ILim = [kI*10/dtInput for i in range(SPData.lenData)] #10 seconds of unit action.
+    ILim = [kI[0,0]*10/dtInput for i in range(SPData.lenData)] #10 seconds of unit action.
     if method == 'joint':
         PegasusJointControl(Pegasus, SPData, localMu, dtComm, dtPrint,
                             dtInput, homeObj, encAlg, holdStill, kP, kI, kD, 

@@ -141,7 +141,9 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
                 localMu.reset_input_buffer()
                 return lastCheck, controlBool
             dataPacket = dataIn[1:-1].split('][')
-            if len(dataPacket) != SPData.lenData: #flush & retry
+            #The '+1' is a bad fix... but a fix that doesn't break anything
+            if len(dataPacket) != SPData.lenData+1: #flush & retry
+                print("error")
                 controlBool = False
                 localMu.reset_input_buffer()
                 return lastCheck, controlBool
