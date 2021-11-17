@@ -165,10 +165,6 @@ class SerialData():
         self.lenData = lenData
         self.desAngle = desAngles
         self.joints = joints
-        if len(joints) != lenData:
-            msg = "Number of joints does not match length of data: "+\
-                  f"({len(joints)}, {lenData})"
-            raise DimensionError(msg)
         self.totCount = [0 for i in range(lenData)]
         self.rotDirCurr = [None for i in range(lenData)]
         self.current = [None for i in range(lenData)]
@@ -203,7 +199,11 @@ class SerialData():
             self.totCount[i] = int(self.totCount[i])
             self.rotDirCurr[i] = int(self.rotDirCurr[i])
             self.prevAngle[i] = self.currAngle[i]
-            self.currAngle[i] = self.totCount[i] * self.joints[i].enc2Theta
+            if i == self.lenData-1:
+                    #Gripper doesn't have an 'angle'
+                    self.currAngle[i] = self.totCount[i]
+            else:
+                self.currAngle[i] = self.totCount[i] * self.joints[i].enc2Theta
             if i == 3 or i == 4:
                 """Due to the unique mechanics of the robot, the 
                 encoder only measures the absolute angle of 3 or 4, 
@@ -221,12 +221,12 @@ class SerialData():
         :param PWMMin: Minimum PWM value necessary to move the motor.
         :param PWMMax: Maximum PWM value that the motors can be given.
         """
-        if dtheta.size != self.lenData:
-            raise InputError("size of dtheta != lenData: " +
-                             f"{dtheta.size} != {self.lenData}")
+        if dtheta.size != self.lenData-1: #-1 for gripper
+            raise InputError("size of dtheta != lenData-1: " +
+                             f"{dtheta.size} != {self.lenData-1}")
         else:
             self.mSpeed = [PWMMin + round((dtheta[i]/dthetaMax[i])*(PWMMax-PWMMin)) 
-            for i in range(self.lenData)] #Rudimentary solution, PID will help!
+            for i in range(self.lenData-1)] #Rudimentary solution, PID will help!
 
     def CheckCommFault(self) -> bool:
         """Checks if data got corrupted using a maximum achievable 
@@ -272,7 +272,8 @@ class SerialData():
         """Stops motors from running if the current angle goes past 
         the indicated joint limit.
         """
-        for i in range(self.lenData):
+        #TODO: MAKE SEPERATE GRIPPER FUNCTIONS
+        for i in range(self.lenData-1): #-1 for gripper
             self.limBool[i] = False
             if self.currAngle[i] < self.joints[i].lims[0] and \
                self.rotDirDes[i] == 1 and self.mSpeed[i] != 0:
