@@ -45,9 +45,9 @@ def LossComp(tauComm: float, dtheta: float,  tauStat: float,
                    bVisc*dtheta
     return tauComm/eff
 
-def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float], 
-                ddthetaList: List[float], Ftip: "np.ndarray[float]") -> \
-                "np.ndarray[float]":
+def FeedForward(robot: Robot, thetaList: np.ndarray, dthetaList: np.ndarray, 
+                ddthetaList: np.ndarray, Ftip: np.ndarray) -> \
+                np.ndarray:
     """Computes the feed-forward torque based on the inverse dynamics 
     of the robot.
     NOTE: This function is used for robots with a shared fifth link. 
@@ -55,9 +55,9 @@ def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float],
     modern_robotics.InverseDynamics() function.
     :param robot: A Robot-class instance containing all characteristic
                   information of the robot.
-    :param thetaList: List of currently desired joint angles.
-    :param dthetaList: List of currently desired joint velocities.
-    :param ddthetaList: List of currently desired joint accelerations.
+    :param thetaList: Array of currently desired joint angles.
+    :param dthetaList: Array of currently desired joint velocities.
+    :param ddthetaList: Array of currently desired joint accelerations.
     :param Ftip: 6-vector representing the desired end-effector forces 
                  and torques in the end-effector frame(!).
     :return FFTorque: Array of feed-forward joint torques.
@@ -67,22 +67,25 @@ def FeedForward(robot: Robot, thetaList: List[float], dthetaList: List[float],
     """Calculate FF torque for all joints except the last, 
     due to shared link w/ joint 4 (which causes problematic dynamics).
     """
+    sList = robot.screwAxes[0]
+    for i in range(1, len(robot.screwAxes)-1):
+        sList = np.c_[sList, robot.screwAxes[i]] #Add columns
     FFTorque = mr.InverseDynamics(thetaList[:-1], dthetaList[:-1], 
                                   ddthetaList[:-1], g, Ftip, \
                                   robot.TllList[:-1], robot.GiList[:-1], \
-                                  robot.screwAxes[:-1])
+                                  sList)
     """Remove joint 4 from the model to calculate final joint torque
     NOTE: Might be inefficient, as the torques for motor 0 through 3 
     are calculated twice.
     """
-    thetaList.pop(-2)
-    dthetaList.pop(-2)
-    ddthetaList.pop(-2)
+    thetaList = np.delete(thetaList, -2)
+    dthetaList = np.delete(dthetaList, -2)
+    ddthetaList = np.delete(ddthetaList, -2)
+    sListFinal = robot.screwAxes[-1]
+    for i in range(len(robot.screwAxes)-2):
+        sListFinal = np.c_[sListFinal, robot.screwAxes[i]]
     TllFinal = robot.TllList[0:-2] + [robot.TllList[-1]]
     GiFinal = robot.GiList[0:-2] + [robot.GiList[-1]]
-    screwFinal = robot.screwAxes[0:-2] + [robot.screwAxes[-1]]
     lastTorque = mr.InverseDynamics(thetaList, dthetaList, ddthetaList, g, \
                                     Ftip, TllFinal, GiFinal, \
-                                    screwFinal)[-1]
-    FFTorque = np.append(FFTorque, lastTorque)
-    return FFTorque
+                                    sListFinal)[-1]
