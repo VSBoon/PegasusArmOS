@@ -21,6 +21,8 @@ import numpy as np
 import time
 import pygame
 
+np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
+
 def HoldPos(pos: Union["np.ndarray[float]", List], pegasus: Robot, 
             SPData: SerialData, kP: "np.ndarray[float]", 
             kI: "np.ndarray[float]", kD: "np.ndarray[float]", 
@@ -76,8 +78,11 @@ def HoldPos(pos: Union["np.ndarray[float]", List], pegasus: Robot,
     PIDT, termI, err = PID(pos, np.array(SPData.currAngle), kP, kI, kD, 
                            termI, ILim, dt, errPrev)
     FFwPID = np.add(feedForwardT, PIDT)
-    mSpeed = [Curr2MSpeed(Tau2Curr(FFwPID[i], pegasus.joints[i].gearRatio, 
-              pegasus.joints[i].km, 2)) for i in range(FFwPID.size)]
+    current = [Tau2Curr(FFwPID[i], pegasus.joints[i].gearRatio, 
+              pegasus.joints[i].km, 2) for i in range(FFwPID.size)]
+    
+    mSpeed = [Curr2MSpeed(current[i]) for i in range(FFwPID.size)]
+    print(f"PID+FF\n{FFwPID}\ncurr\n{current}\nmSpeed\n{mSpeed}") #Debug
     return mSpeed, termI, err
 
 def SpeedUpJ(SPData: SerialData, nJoint: int, rotDir: int, mSpeed: int):
@@ -293,9 +298,10 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
                 localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
                 lastWrite = time.time()
             if (time.time() - lastPrint >= dtPrint):
-                print(f"Speed: {SPData.mSpeed}, Direction: {SPData.rotDirDes}")
-                print(f"Count: {SPData.totCount}, Homing: {SPData.homing}")
-                print(f"Angle: {['%.2f' % elem for elem in SPData.currAngle]}")
+                #COMMENTED OUT FOR DEBUG
+                #print(f"Speed: {SPData.mSpeed}, Direction: {SPData.rotDirDes}")
+                #print(f"Count: {SPData.totCount}, Homing: {SPData.homing}")
+                #print(f"Angle: {['%.2f' % elem for elem in SPData.currAngle]}")
                 lastPrint = time.time()
             if (time.time() - lastInput >= dtInput):
                 #Check for key-press, act accordingly
@@ -332,7 +338,7 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
         return
     print("This should never happen!")
 
-def CheckKeysEF(SPData: SerialData, vMin: float, vMax: float, vSel: float, 
+def CheckKeysEF(SPData: SerialData, pressed: Dict[str, bool], vMin: float, vMax: float, vSel: float, 
                 wMin: float, wMax: float, wSel: float, dVel: float= 0.02) \
                 -> Tuple["np.ndarray[float]", float, float]:
     """Checks for key-presses and alter velocity components
@@ -347,6 +353,7 @@ def CheckKeysEF(SPData: SerialData, vMin: float, vMax: float, vSel: float,
     t/y: Increment/decrement linear velocity.
     g/h: Increment/decrement angular velocity.\n
     :param SPData: SerialData object for communication.
+    :param pressed: Dictionary to keep track of keyboard activity.
     :param vSel: Previously selected linear velocity in [m/s].
     :param wSel: Previously selected angular velocity in [rad/s].
     :param vMax: Maximum linear end-effector velocity in [m/s].
@@ -357,10 +364,14 @@ def CheckKeysEF(SPData: SerialData, vMin: float, vMax: float, vSel: float,
     :return V: 6x1 velocity twist.
     :return vSel: Newly selected linear velocity in [m/s].
     :return wSel: Newly selected angular velocity in [rad/s].
+    :return pressed: Updated dictionary for tracking keyboard activity.
+    :return noInput: Boolean indicating presence of new inputs.
     """
     V = [0 for i in range(6)]
-    if any(SPData.limBool):
+    if SPData.limBool.any():
         limFactor = 0
+    else:
+        limFactor = 1
     events = pygame.event.get()
     if len(events) == 0:
         noInput = True
@@ -371,28 +382,40 @@ def CheckKeysEF(SPData: SerialData, vMin: float, vMax: float, vSel: float,
     for event in events:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_w:
+                pressed['w'] = True
                 V[3] = vSel * limFactor
             elif event.key == pygame.K_s:
+                pressed['s'] = True
                 V[3] = -vSel * limFactor
             elif event.key == pygame.K_a:
+                pressed['a'] = True
                 V[4] = vSel * limFactor
             elif event.key == pygame.K_d:
+                pressed['d'] = True
                 V[4] = -vSel * limFactor
             elif event.key == pygame.K_z:
+                pressed['z'] = True
                 V[5] = vSel * limFactor
             elif event.key == pygame.K_x:
+                pressed['x'] = True
                 V[5] = -vSel * limFactor
             elif event.key == pygame.K_q:
+                pressed['q'] = True
                 V[0] = wSel * limFactor
             elif event.key == pygame.K_e:
+                pressed['e'] = True
                 V[0] = -wSel * limFactor
             elif event.key == pygame.K_r:
+                pressed['r'] = True
                 V[1] = wSel * limFactor
             elif event.key == pygame.K_f:
+                pressed['f'] = True
                 V[1] = -wSel * limFactor
             elif event.key == pygame.K_c:
+                pressed['c'] = True
                 V[2] = wSel * limFactor
             elif event.key == pygame.K_v:
+                pressed['v'] = True
                 V[2] = -wSel * limFactor
             elif event.key == pygame.K_t:
                 if (vSel + dVel) < vMax:
@@ -418,21 +441,45 @@ def CheckKeysEF(SPData: SerialData, vMin: float, vMax: float, vSel: float,
                 print(f"angular velocity: {wSel} rad/s")
 
         elif event.type == pygame.KEYUP:
-            if event.key == pygame.K_w or event.key == pygame.K_s:
-                V[3] = vSel
-            elif event.key == pygame.K_a or event.key == pygame.K_d:
-                V[4] = vSel
-            elif event.key == pygame.K_z or event.key == pygame.K_x:
-                V[5] = vSel
-            elif event.key == pygame.K_q or event.key == pygame.K_e:
-                V[0] = wSel
-            elif event.key == pygame.K_r or event.key == pygame.K_f:
-                V[1] = wSel
-            elif event.key == pygame.K_c or event.key == pygame.K_v:
-                V[2] = wSel
+            if event.key == pygame.K_w:
+                pressed['w'] = False
+                V[3] = 0
+            elif event.key == pygame.K_s:
+                pressed['s'] = False
+                V[3] = 0
+            elif event.key == pygame.K_a:
+                pressed['a'] = False
+                V[4] = 0
+            elif event.key == pygame.K_d:
+                pressed['a'] = False
+                V[4] = 0
+            elif event.key == pygame.K_z:
+                pressed['z'] = False
+                V[5] = 0
+            elif event.key == pygame.K_x:
+                pressed['x'] = False
+                V[5] = 0
+            elif event.key == pygame.K_q: 
+                pressed['q'] = False
+                V[0] = 0
+            elif event.key == pygame.K_e:
+                pressed['e'] = False
+                V[0] = 0
+            elif event.key == pygame.K_r:
+                pressed['r'] = False
+                V[1] = 0
+            elif event.key == pygame.K_f:
+                pressed['f'] = False
+                V[1] = 0
+            elif event.key == pygame.K_c:
+                pressed['c'] = False 
+                V[2] = 0
+            elif event.key == pygame.K_v:
+                pressed['v'] = False
+                V[2] = 0
         elif event.type == pygame.QUIT:
             raise KeyboardInterrupt()
-        return V, vSel, wSel, noInput
+        return V, vSel, wSel, pressed, noInput
 
 def DThetaToComm(SPData: SerialData, dtheta: "np.ndarray[float]") \
                 -> "np.ndarray[float]":
@@ -536,8 +583,11 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
     lastWrite = time.time()
     lastPrint = time.time()
     lastInput = time.time()
-    screwAxes = [SPData.joints[i].screwAx for i in range(len(SPData.joints))]
+    screwAxes = pegasus.joints[0].screwAx
+    for i in range(1, len(pegasus.joints)):
+        screwAxes = np.c_[screwAxes, pegasus.joints[i].screwAx]
     noInput = True
+    pressed = Dict()
     try:
         while True: #Main loop
                 lastCheck = SReadAndParse(SPData, lastCheck, dtComm, 
@@ -546,9 +596,10 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
                     #Check for each motor if the current move is allowed 
                     #within the joint limits
                     SPData.CheckJointLim() #TODO: Check if dir is correct!
-                    for i in range(SPData.lenData):
+                    for i in range(SPData.lenData-1):
                         SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
                                             f"{SPData.rotDirDes[i]}"
+                    SPData.dataOut[-1] = f"{0|0}" #Gripper, TODO: Replace w/ gripper commands
                     localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
                     lastWrite = time.time()
                 if (time.time() - lastPrint >= dtPrint):
@@ -560,7 +611,10 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
                     #Check for key-press, act accordingly
                     vels = [vMin, vMax, vSel, wMin, wMax, wSel]
                     noInputPrev = noInput
-                    V, vSel, wSel, noInput = CheckKeysEF(SPData, *vels)
+                    V, vSel, wSel, pressed, noInput = CheckKeysEF(SPData, 
+                                                                  pressed, 
+                                                                  *vels)
+                    print(f"Key input:\n{V}\n{vSel}\n{wSel}\n{noInput}")
                     if holdStill:
                         if noInput:
                             #Note: Gripper not included in HoldPos!
