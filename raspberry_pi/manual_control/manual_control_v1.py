@@ -688,10 +688,10 @@ def PegasusManualControl(method="joints"):
                         [0,0,0, 1     ]])
     #Screw axes in the Space Frame {s}
     S0 = np.array([0,0,1,0,0,0])
-    S1 = np.array([0,1,0,-0.0035,0,0.126])
-    S2 = np.array([0,1,0,-0.0035,0,0.335])
-    S3 = np.array([0,1,0,-0.234,0,0.355])
-    S4 = np.array([0,0,1,-0.234,-0.016,0])
+    S1 = np.array([0,1,0,-0.125,0,0.0035])
+    S2 = np.array([0,1,0,-0.355,0,0.0035])
+    S3 = np.array([0,1,0,-0.585,0,0.0030])
+    S4 = np.array([1,0,0,0,0.585,0.016])
     #Joint limits in home configuration, of the form [lower, upper]:
     lims0 = [-0.945*np.pi, 0.945*np.pi] #+/- 170 deg
     lims1 = [-0.25*np.pi, 0.5*np.pi] #-45 deg, + 90 deg
