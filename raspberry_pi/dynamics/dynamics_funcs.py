@@ -71,6 +71,9 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List, g: np.nd
     screwA = np.zeros((6, n))
     expT = np.zeros((n,4,4))
     AdTiiN = np.zeros((n+1,6,6))
+    """The end-effector frame (TllList[n]) is rigidly connected
+    to the frame of the previous link --> constant T_(n-1,n)"""
+    AdTiiN[n] = mr.Adjoint(mr.TransInv(robot.TllList[n]))
     V = np.zeros((6, n+1))
     dV = np.zeros((6, n+1))
     dV[3:,0] = -g #Gravity is equivalent to upward acceleration
@@ -110,7 +113,6 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List, g: np.nd
         if i != n-2:
             """Wrench due to wrench next link + link acceleration - 
             Coriolis/centripetal terms"""
-            #AdTiiN is transposed to obtain T_(i,i+1) from T_(i+1,i)
             F[:,i] = np.dot(AdTiiN[i+1].T, F[:,i+1]) + \
                 np.dot(robot.GiList[i], dV[:,i+1]) - \
                 np.dot(mr.ad(V[:,i+1]).T, np.dot(robot.GiList[i], V[:,i+1]))
