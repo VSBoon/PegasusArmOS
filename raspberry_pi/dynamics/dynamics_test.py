@@ -122,6 +122,88 @@ joints = [J0, J1, J2, J3, J4]
 robot = Robot(joints, links, TsbHome)
 ###END OF ROBOT INIT###
 
+def InverseDynamicsDEBUG(thetalist, dthetalist, ddthetalist, g, Ftip, Mlist, \
+                    Glist, Slist):
+    """Computes inverse dynamics in the space frame for an open chain robot
+
+    :param thetalist: n-vector of joint variables
+    :param dthetalist: n-vector of joint rates
+    :param ddthetalist: n-vector of joint accelerations
+    :param g: Gravity vector g
+    :param Ftip: Spatial force applied by the end-effector expressed in frame
+                 {n+1}
+    :param Mlist: List of link frames {i} relative to {i-1} at the home
+                  position
+    :param Glist: Spatial inertia matrices Gi of the links
+    :param Slist: Screw axes Si of the joints in a space frame, in the format
+                  of a matrix with axes as the columns
+    :return: The n-vector of required joint forces/torques
+    This function uses forward-backward Newton-Euler iterations to solve the
+    equation:
+    taulist = Mlist(thetalist)ddthetalist + c(thetalist,dthetalist) \
+              + g(thetalist) + Jtr(thetalist)Ftip
+
+    Example Input (3 Link Robot):
+        thetalist = np.array([0.1, 0.1, 0.1])
+        dthetalist = np.array([0.1, 0.2, 0.3])
+        ddthetalist = np.array([2, 1.5, 1])
+        g = np.array([0, 0, -9.8])
+        Ftip = np.array([1, 1, 1, 1, 1, 1])
+        M01 = np.array([[1, 0, 0,        0],
+                        [0, 1, 0,        0],
+                        [0, 0, 1, 0.089159],
+                        [0, 0, 0,        1]])
+        M12 = np.array([[ 0, 0, 1,    0.28],
+                        [ 0, 1, 0, 0.13585],
+                        [-1, 0, 0,       0],
+                        [ 0, 0, 0,       1]])
+        M23 = np.array([[1, 0, 0,       0],
+                        [0, 1, 0, -0.1197],
+                        [0, 0, 1,   0.395],
+                        [0, 0, 0,       1]])
+        M34 = np.array([[1, 0, 0,       0],
+                        [0, 1, 0,       0],
+                        [0, 0, 1, 0.14225],
+                        [0, 0, 0,       1]])
+        G1 = np.diag([0.010267, 0.010267, 0.00666, 3.7, 3.7, 3.7])
+        G2 = np.diag([0.22689, 0.22689, 0.0151074, 8.393, 8.393, 8.393])
+        G3 = np.diag([0.0494433, 0.0494433, 0.004095, 2.275, 2.275, 2.275])
+        Glist = np.array([G1, G2, G3])
+        Mlist = np.array([M01, M12, M23, M34])
+        Slist = np.array([[1, 0, 1,      0, 1,     0],
+                          [0, 1, 0, -0.089, 0,     0],
+                          [0, 1, 0, -0.089, 0, 0.425]]).T
+    Output:
+        np.array([74.69616155, -33.06766016, -3.23057314])
+    """
+    n = len(thetalist)
+    Mi = np.eye(4)
+    Ai = np.zeros((6, n))
+    AdTi = [[None]] * (n + 1)
+    Vi = np.zeros((6, n + 1))
+    Vdi = np.zeros((6, n + 1))
+    Vdi[:, 0] = np.r_[[0, 0, 0], -np.array(g)]
+    AdTi[n] = mr.Adjoint(mr.TransInv(Mlist[n]))
+    Fi = np.array(Ftip).copy()
+    taulist = np.zeros(n)
+    for i in range(n):
+        Mi = np.dot(Mi,Mlist[i])
+        Ai[:, i] = np.dot(mr.Adjoint(mr.TransInv(Mi)), np.array(Slist)[:, i])
+        AdTi[i] = mr.Adjoint(np.dot(mr.MatrixExp6(mr.VecTose3(Ai[:, i] * \
+                                            -thetalist[i])), \
+                                 mr.TransInv(Mlist[i])))
+        Vi[:, i + 1] = np.dot(AdTi[i], Vi[:,i]) + Ai[:, i] * dthetalist[i]
+        Vdi[:, i + 1] = np.dot(AdTi[i], Vdi[:, i]) \
+                       + Ai[:, i] * ddthetalist[i] \
+                       + np.dot(mr.ad(Vi[:, i + 1]), Ai[:, i]) * dthetalist[i]
+    for i in range (n - 1, -1, -1):
+        Fi = np.dot(np.array(AdTi[i + 1]).T, Fi) \
+             + np.dot(np.array(Glist[i]), Vdi[:, i + 1]) \
+             - np.dot(np.array(mr.ad(Vi[:, i + 1])).T, \
+                      np.dot(np.array(Glist[i]), Vi[:, i + 1]))
+        taulist[i] = np.dot(np.array(Fi).T, Ai[:, i])
+    return taulist
+
 def test_FFOptZero():
     """Check if FF gives no required torques if no forces are applied."""
     theta = np.array([0, 0, 0, 0, 0])
@@ -143,7 +225,6 @@ def test_FFOptGrav():
     g = np.array([0,0,-9.81])
     FTip = np.array([0,0,0,0,0,0])
     tau = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
-    print(tau)
     """Increasing the angle of the second joint (downward) should
     make the torque for this joint (and the third) significantly larger.
     Additionally: The torque on the fourth joint should decrease, as 
@@ -154,6 +235,82 @@ def test_FFOptGrav():
     assert abs(tau2[2]) > abs(tau[2])
     assert abs(tau2[3]) < abs(tau[3])
 
+def test_FFOptdtheta():
+    theta = np.array([0,0,0,0,0])
+    dtheta = np.array([0,0,0,0,0])
+    ddtheta = np.array([0,0,0,0,0])
+    g = np.array([0,0,-9.81])
+    FTip = np.array([0,0,0,0,0,0])
+    tau = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    theta = np.array([0,0,0,0,0])
+    dtheta = np.array([np.pi,0,0,0,0])
+    ddtheta = np.array([0,0,0,0,0])
+    g = np.array([0,0,-9.81])
+    FTip = np.array([0,0,0,0,0,0])
+    tau2 = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    assert np.allclose(tau2, tau2, atol=1e-03)
+
+    theta = np.array([0,0,0,0])
+    dtheta = np.array([np.pi,0,0,0])
+    ddtheta = np.array([0,0,0,0])
+    Mlist = [robot.links[i].Tii for i in range(len(theta))]
+    Mlist.append(robot.TsbHome)
+    Glist = [robot.links[i].Gi for i in range(len(theta))]
+    Slist = np.c_[robot.screwAxes[0], robot.screwAxes[1]]
+    for i in range(2, len(theta)):
+        Slist = np.c_[Slist, robot.screwAxes[i]]
+    tauMRFirst = InverseDynamicsDEBUG(theta, dtheta, ddtheta, g, FTip, Mlist,Glist, Slist)
+    assert np.allclose(tauMRFirst, tau2[0:-1])
+
+    Slist[:, -1] = robot.screwAxes[-1]
+    tauMRLast = InverseDynamicsDEBUG(theta, dtheta, ddtheta, g, FTip, Mlist,Glist, Slist)
+    assert np.allclose(tauMRLast, np.r_[tau2[0:-2], tau[-1:]], atol=1e-03)
+
+def test_FFOptddtheta():
+    theta = np.array([0,0,0,0,0])
+    dtheta = np.array([0,0,0,0,0])
+    ddtheta = np.array([0,0,0,0,0])
+    g = np.array([0,0,-9.81])
+    FTip = np.array([0,0,0,0,0,0])
+    tau = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    ddtheta = np.array([0,0.25*np.pi,0,0,0])
+    tau2 = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    #Expectation: Torque is higher for at least joint 2
+    assert tau2[1] > tau[1]
+
+def test_FFOptFTip():
+    theta = np.array([0,0,0,0,0])
+    dtheta = np.array([0,0,0,0,0])
+    ddtheta = np.array([0,0,0,0,0])
+    g = np.array([0,0,-9.81])
+    FTip = np.array([0,0,0,0,0,0]) 
+    tau = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    FTip = np.array([1,0,0,0,0,0]) #Pure x rotation in body frame
+    tau2 = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    print(tau)
+    print(tau2)
+    #Expectation: Mainly joint five will have to give additional torque
+    assert tau2[-1] > tau[-1]
+    FTip = np.array([0,1,0,0,0,0]) #Pure y rotation in body frame
+    tau3 = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    print(tau3)
+    """Expectation: At least joint four, three, and two will have to 
+                    give additional torque
+    Expectation: Joint five should be barely affected
+    """
+    assert all(np.greater(tau3[1:-2], tau[1:-2]))
+    assert np.isclose(tau3[-1], tau[-1], atol=1e-3)
+    FTip = np.array([0,0,0,1,0,0])#Pure linear force in x
+    tau4 = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    print(tau4)
+    """Expectation: Mainly joint two, three, and four will have to 
+                    give additional torque in the home configuration
+        Expectation: Joint five should be barely affected
+    """
+    assert all(np.greater(tau3[1:-2], tau[1:-2]))
+    assert np.isclose(tau3[-1], tau[-1], atol=1e-3)
+
+
 
 if __name__ == "__main__":
-    test_FFOptGrav()
+    test_FFOptFTip()
