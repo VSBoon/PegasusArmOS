@@ -657,31 +657,29 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
 def PegasusManualControl(method="joints"):
     ### INTANTIATE ROBOT INSTANCE ###
     #Inertia matrices
-    iMat0 = np.diag([0.03584238, 0.02950513, 0.04859042])
-    iMat1 = np.diag([0.00393345, 0.00236823, 0.00171701])
-    iMat2 = np.diag([0.0092912, 0.00210452, 0.0029424])
-    iMat34 = np.diag([0.00363966, 0.00347835, 0.00041124])
-    massList = [4.99, 0.507, 0.420, 0.952, 0.952]
+    iMat0 = np.diag([0.03947, 0.03362, 0.04886])
+    iMat1 = np.diag([0.00393, 0.00237, 0.00172])
+    iMat2 = np.diag([0.00294, 0.00210, 0.0029])
+    iMat34 = np.diag([0.00041, 0.00348, 0.00364])
+    massList = [5.13, 0.507, 0.420, 0.952, 0.952]
     #Transformation matrices from CoM of links with principle axes of
-    #inertia to the space frame (Tsi), at the home configuration:
-    Tsi0 = np.array([[ 0.437, 0.824,-0.361,-0.0406],
-                     [-0.888, 0.459,-0.029,-0.0349],
-                     [ 0.142, 0.333, 0.932, 0.0580],
-                     [0    , 0     , 0    , 1     ]])
-    Tsi1 = np.array([[ 0.054, 0.737, 0.674, 0.0002],
-                     [ 0.045, 0.672,-0.739,-0.0356],
-                     [-0.998, 0.070, 0.003, 0.1603],
-                     [0    , 0     , 0    , 1     ]])
-    Tsi2 = np.array([[-0.003, 0.082, 0.997, 0.0034],
-                     [ 0.001, 0.997,-0.082,-0.0183],
-                     [-1.000, 0.001,-0.003, 0.4014],
-                     [0    , 0     , 0    , 1     ]])
+    #inertia to the space frame (Tsi):
+    Tsi0 = np.array([[ 0.397, 0.838,-0.375, 0.0284],
+                    [-0.909, 0.416,-0.033,-0.0413],
+                    [ 0.129, 0.354, 0.926, 0.0522],
+                    [0    , 0     , 0    , 1     ]])
+    Tsi1 = np.array([[ 0.000, 0.455, 0.890, 0.0015],
+                    [ 0.001, 0.890,-0.455, 0.0026],
+                    [-1.000, 0.007, 0.001, 0.0039],
+                    [0    , 0     , 0    , 1     ]])
+    Tsi2 = np.array([[-0.003, 0.082, 0.997, 0.0009],
+                    [ 0.001, 0.997,-0.082, 0.0021],
+                    [-1.000, 0.001,-0.003, 0.0029],
+                    [0    , 0     , 0    , 1     ]])
     Tsi34 = np.array([[-0.999, 0.000, -0.035, 0.0076],
-                      [0.000, -1.000, -0.000,-0.0159],
-                      [-0.035, -0.000, 0.999, 0.5840],
-                      [0    , 0     , 0    , 1     ]])
-    #Transformation matrix taking the final link frame to the end-effector
-    #frame at the home configration
+                    [0.000, -1.000, -0.000,-0.0159],
+                    [-0.035, -0.000, 0.999, 0.5840],
+                    [0    , 0     , 0    , 1     ]])
     TsbHome = np.array([[1,0,0, 0.1474],
                         [0,1,0,-0.0168],
                         [0,0,1, 0.5853],
@@ -692,29 +690,27 @@ def PegasusManualControl(method="joints"):
     S2 = np.array([0,1,0,-0.355,0,0.0035])
     S3 = np.array([0,1,0,-0.585,0,0.0030])
     S4 = np.array([1,0,0,0,0.585,0.016])
-    #Joint limits in home configuration, of the form [lower, upper]:
     lims0 = [-0.945*np.pi, 0.945*np.pi] #+/- 170 deg
     lims1 = [-0.25*np.pi, 0.5*np.pi] #-45 deg, + 90 deg
     lims2 = [-np.pi, 0.25*np.pi] #-180 deg, + 45 deg.
     lims3 = [-np.pi, 0.25*np.pi] #-180 deg, +45 deg.
     lims4 = [-np.pi, np.pi] #+/- 180 deg.
-    limsTest = [-0.1*np.pi, 0.1*np.pi]
-    cpr = 520
-    #Motor constant at INPUT shaft!
-    km = [22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3),
-          22.7*10**(-3), .7*10**(-3), 9.2*10**(-3)] 
-    gearRatioList = [19.7*50, 19.7*25, (127.7*32)/9, (65.5*20)/9, 
-                     (65.5*20)/9, 19.5]
+    gearRatioList = [19.7*50, 19.7*50, (65.5*20)/9, (65.5*20)/9, (127.7*32)/9]
+    cpr = 512
     L0 = Link(iMat0, massList[0], None, Tsi0)
     L1 = Link(iMat1, massList[1], L0, Tsi1)
     L2 = Link(iMat2, massList[2], L1, Tsi2)
     L34 = Link(iMat34, massList[3], L2, Tsi34)
+    links = [L0, L1, L2, L34, L34]
+    km = [22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3),
+            22.7*10**(-3), 22.7*10**(-3), 9.2*10**(-3)] 
     J0 = Joint(S0, [None, L0], gearRatioList[0], km[0], cpr, lims0)
     J1 = Joint(S1, [L0, L1], gearRatioList[1], km[1], cpr, lims1)
     J2 = Joint(S2, [L1, L2], gearRatioList[2], km[2], cpr, lims2)
-    J3 = Joint(S3, [L2,34], gearRatioList[3], km[3], cpr, lims3)
+    J3 = Joint(S3, [L2,L34], gearRatioList[3], km[3], cpr, lims3)
     J4 = Joint(S4, [L2,L34], gearRatioList[4], km[4], cpr, lims4)
-    Pegasus = Robot([J0, J1, J2, J3, J4], [L0, L1, L2, L34, L34], TsbHome)
+    joints = [J0, J1, J2, J3, J4]
+    Pegasus = Robot(joints, links, TsbHome)
     ### END OF ROBOT INITIATION ###
 
     ### SETUP SERIAL COMMUNICATION ###
