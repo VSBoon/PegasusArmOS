@@ -11,7 +11,7 @@ sys.path.append(parent)
 import numpy as np
 import modern_robotics as mr
 from classes import Robot, Link, Joint
-from dynamics.dynamics_funcs import LossComp, FeedForward, MassMatrix, CorrCentTorques, GravTorques, FTipTorques, ForwardDynamics, SimulateStep
+from dynamics.dynamics_funcs import FricTau, FeedForward, MassMatrix, CorrCentTorques, GravTorques, FTipTorques, ForwardDynamics, SimulateStep
 
 np.set_printoptions(precision=3)
 
@@ -22,48 +22,54 @@ bVisc = 0.04
 tauKin = 0.015
 eff = 0.8
 
-def test_LossCompNoLoss():
+def test_tauFricNoLoss():
     """Checks functionality if loss model is nullified"""
     tauStat = 0
     bVisc = 0
     tauKin = 0
     eff = 1
-    tau = LossComp(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
-    assert tau == tauComm
+    tau = FricTau(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
+    assert tau == 0
 
-def test_LossCompEff():
+def test_FricTauEff():
     """Checks efficiency calculation"""
     tauStat = 0
     bVisc = 0
     tauKin = 0
     eff = 0.8
-    tau = LossComp(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
-    assert tau == tauComm/eff
+    tau = FricTau(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
+    assert tau == tauComm/eff - tauComm
 
-def test_LossCompStat():
+def test_FricTauStat():
     """Observe if static & kinetic friction (w/o viscous) works."""
     tauStat = 1
     dtheta = 0
     eff = 1
     bVisc = 0.04
-    tau = LossComp(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
-    assert tau == tauComm + tauStat
+    tau = FricTau(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
+    assert tau == tauStat
     dtheta = 1
     bVisc = 0
-    tau = LossComp(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
-    assert tau == tauComm + tauKin
+    tau = FricTau(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
+    assert tau == tauKin
 
-def test_LossCompDyn():
+def test_FricTauDyn():
     """Checks if full functionality works"""
-    tau = LossComp(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
-    assert tau == (tauComm + tauKin + bVisc*dtheta)/eff
+    tauComm = 0.5
+    tauStat = 1
+    tauKin = 0.4
+    dtheta = 1
+    eff = 0.8
+    bVisc = 0.05
+    tau = FricTau(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
+    assert tau == (tauKin*np.sign(dtheta) + bVisc*dtheta) + tauComm/eff - tauComm
 
-def test_LossCompSign():
-    """See if LossComp correctly handles velocity signes"""
+def test_FricTauSign():
+    """See if FricTau correctly handles velocity signes"""
     dtheta = -1
     eff = 1
-    tau = LossComp(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
-    assert tau == tauComm - tauKin + bVisc*dtheta     
+    tau = FricTau(tauComm, dtheta, tauStat, bVisc, tauKin, eff)
+    assert tau == -tauKin + bVisc*dtheta     
 
 ###ROBOT INITIALISATION###
 #Inertia matrices

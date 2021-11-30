@@ -51,7 +51,9 @@ class Joint():
     calculations."""
     def __init__(self, screwAx: np.ndarray, links: List[Link], gearRatio: 
                  float, km: float, cpr: int, lims: List[float] = 
-                 [-2*np.pi, 2*np.pi], inSpace: bool = True):
+                 [-2*np.pi, 2*np.pi], tauStat: float=0, tauKin: 
+                 float=0, bVisc: float=0, eff: float=1, 
+                 inSpace: bool = True):
         """Constructor for Joint class.
         :param screwAx: A 6x1 screw axis in the home configuration, per 
         Definition 3.24 of the Modern Robotics book.
@@ -61,6 +63,10 @@ class Joint():
         :param km: Motor constant in Nm/A
         :param cpr: Counts per revolution of the encoder shaft.
         :param lims: The joint limits, in the order [lower, upper].
+        :param tauStat: Static friction torque
+        :param tauKin: Kinetic friction torque
+        :param bVisc: Viscous damping coefficient in [(N/m)/(rad/s)]
+        :param eff: Torque efficiency
         :param inSpace: Notes if the screw axis is in the space frame
                         (True) or in the body frame (False).
         """        
@@ -71,6 +77,8 @@ class Joint():
         self.cpr = cpr
         self.enc2Theta = 1/(cpr*gearRatio) * 2*np.pi
         self.links: List[Link] = links
+        self.fricPar = dict(stat=tauStat, kin=tauKin, visc=bVisc,
+                            eff=eff)
         self.inSpace: bool = inSpace
     
     def __repr__(self):

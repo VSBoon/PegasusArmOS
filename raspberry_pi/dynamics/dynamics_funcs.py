@@ -16,10 +16,10 @@ import numpy as np
 """
 np.set_printoptions(precision=5, suppress=True)
 
-def LossComp(tauComm: float, dtheta: float,  tauStat: float, 
+def FricTau(tauComm: float, dtheta: float,  tauStat: float, 
             bVisc: float, tauKin: float, eff: float) -> float:
-    """Adds friction according to a model utilizing static, viscous, 
-    and kinetic friction coefficients. 
+    """Calculates friction torque according to a model utilizing 
+    static, viscous, and kinetic friction coefficients. 
     :param tauComm: Desired torque based on inverse dynamics at the 
                     output shaft.
     :param dtheta: Desired joint velocity.
@@ -34,17 +34,19 @@ def LossComp(tauComm: float, dtheta: float,  tauStat: float,
     NOTE: All variables are taken w.r.t the output shaft, so after 
     the internal & external gearbox!
     """
+    tauFric = 0
     if np.isclose(dtheta, 0, atol=1e-04) and \
         not tauComm == 0: #Static friction
         if dtheta != 0:
             dir = np.sign(dtheta)
         else:
             dir = np.sign(tauComm) #Reasonable approximation
-        tauComm += tauStat*dir
+        tauFric = tauStat*dir
     elif not tauComm == 0: #Kinetic & viscous friction
-        tauComm += tauKin*np.sign(dtheta) + \
+        tauFric = tauKin*np.sign(dtheta) + \
                    bVisc*dtheta
-    return tauComm/eff
+    tauFric += tauComm/eff - tauComm
+    return tauFric
 
 def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List, 
                 g: np.ndarray, FTip: np.ndarray) -> np.ndarray:
@@ -71,7 +73,6 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
     [ 0.81  -1.343  0.767  1.754  0.958]
     """
     #Initialization
-    #DEBUG: REMOVE INVERSE FOR TLLLIST
     #Note: 6,shape is used to obtain column vectors for calculations.
     n = len(theta) #Number of joints
     Tsi = np.eye(4)
@@ -92,6 +93,7 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
     F = np.zeros((6, n+1))
     F[:, n] = FTip
     tau = np.zeros(n)
+    tauFric = np.zeros(n)
     #Forward iterations
     for i in range(n):
         if i != n-1:
@@ -119,6 +121,13 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
             V[:,i+1] = screwA[:,i]*dtheta[i] + np.dot(AdTiiN[i], V[:,i-1])
             dV[:,i+1] = screwA[:,i]*ddtheta[i] + np.dot(AdTiiN[i], dV[:,i-1]) + \
                     np.dot(mr.ad(V[:,i+1]), screwA[:,i]*dtheta[i])
+        """Compute joint friction based on friction model of joint."""
+        tauStat = robot.joints[i].fricPar['stat']
+        tauKin = robot.joints[i].fricPar['kin']
+        bVisc = robot.joints[i].fricPar['visc']
+        eff = robot.joints[i].fricPar['eff']
+        tauFric[i] = FricTau(tau[i], dtheta[i], tauStat, bVisc, tauKin, eff)
+
     #Backward iterations
     for i in range(n-1, -1, -1):
         if i != n-2:
@@ -134,7 +143,7 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
         """Obtain torques by projection through screwA, effectively a
         column of the Jacobian between wrenches/twists in {i} and 
         joint space"""
-        tau[i] = np.dot(F[:,i].T, screwA[:,i]) 
+        tau[i] = np.dot(F[:,i].T, screwA[:,i]) + tauFric[i] 
     return tau
 
 def MassMatrix(robot: Robot, theta: List) -> np.ndarray:
@@ -273,7 +282,15 @@ def ForwardDynamics(robot: Robot, theta: List, dtheta: List,
     tauC = CorrCentTorques(robot, theta, dtheta)
     tauG = GravTorques(robot, theta, g)
     tauF = FTipTorques(robot, theta, FTip)
-    tauAcc = tau - tauC - tauG - tauF
+    tauFric = np.zeros(len(theta))
+    for i in range(len(theta)):
+        tauStat = robot.joints[i].fricPar['stat']
+        tauKin = robot.joints[i].fricPar['kin']
+        bVisc = robot.joints[i].fricPar['visc']
+        eff = robot.joints[i].fricPar['eff']
+        tauFric[i] = FricTau(tau[i], dtheta[i], tauStat, bVisc, tauKin, eff)
+    #TODO: Consult Sander on wormgear integration
+    tauAcc = tau - tauC - tauG - tauF - tauFric
     ddtheta = np.dot(np.linalg.inv(M), tauAcc)
     return ddtheta.tolist()
 
@@ -311,6 +328,8 @@ def SimulateStep(robot: Robot, thetaPrev: List, dthetaPrev: List,
     [1.0010, 1.0010, 1.0010, 1.0010, 1.0010]
     [1.0052, 1.0136, 0.9889, 1.0125, 1.0121]
     [8.3721, 25.2644, -22.1423, 23.0293, 22.2858]
+    NOTE: Excluded the effect of model inaccuracies & PID for more 
+    advanced simulation.
     """
     n = len(thetaPrev)
     theta = [None for i in range(n)]
