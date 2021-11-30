@@ -291,6 +291,25 @@ def test_FFOptFTip():
     print(tau2)
     #Expectation: Mainly joint five will have to give additional torque
     assert tau2[-1] > tau[-1]
+    theta = np.array([0,0,0,0])
+    dtheta = np.array([0,0,0,0])
+    ddtheta = np.array([0,0,0,0])
+    Mlist = [robot.links[i].Tii for i in range(len(theta))]
+    Mlist.append(robot.TsbHome)
+    Glist = [robot.links[i].Gi for i in range(len(theta))]
+    Slist = np.c_[robot.screwAxes[0], robot.screwAxes[1]]
+    for i in range(2, len(theta)):
+        Slist = np.c_[Slist, robot.screwAxes[i]]
+    tauMR = InverseDynamicsDEBUG(theta, dtheta, ddtheta, g, FTip, Mlist,Glist, Slist)
+    #Expectation: All torques should be the same (minus the one missing in tauMR)
+    assert np.allclose(tauMR, tau2[:-1])
+    Slist[:,-1] = robot.screwAxes[-1] #Switch final axis
+    tauMR2 = InverseDynamicsDEBUG(theta, dtheta, ddtheta, g, FTip, Mlist,Glist, Slist)
+    assert np.allclose(tauMR2, np.r_[tau2[:-2], tau2[-1]])
+
+    theta = np.array([0,0,0,0,0]) #Reset (dd)theta dimensions
+    dtheta = np.array([0,0,0,0,0])
+    ddtheta = np.array([0,0,0,0,0])
     FTip = np.array([0,1,0,0,0,0]) #Pure y rotation in body frame
     tau3 = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
     print(tau3)
@@ -313,4 +332,9 @@ def test_FFOptFTip():
 
 
 if __name__ == "__main__":
-    test_FFOptFTip()
+    theta = [0,0.5*np.pi, 0.25*np.pi, 0.25*np.pi, 0]
+    dtheta = [0,1,0,0,0]
+    ddtheta = [100,100,100,100,100]
+    g = np.array([0,0,-9.81])
+    FTip = np.array([1,1,1,1,1,1])
+    print(FeedForward(robot, theta, dtheta, ddtheta, g, FTip))
