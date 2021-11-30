@@ -7,7 +7,7 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 from classes import Robot
-from typing import List
+from typing import List, Tuple
 import modern_robotics as mr
 import numpy as np
 
@@ -45,7 +45,8 @@ def LossComp(tauComm: float, dtheta: float,  tauStat: float,
                    bVisc*dtheta
     return tauComm/eff
 
-def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List, g: np.ndarray, FTip: np.ndarray) -> List:
+def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List, 
+                g: np.ndarray, FTip: np.ndarray) -> np.ndarray:
     """Optimized feed-forward for the Pegasus arm, only going through 
     the Newton-Euler inverse dynamics algorithm once. Based on the
     Modern Robotics Python Library.
@@ -58,9 +59,18 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List, g: np.nd
     :return tau: A list of required joint torques at the output shaft.
 
     Example input:
-    
+    (Joints and links init not included for brevity)
+    Pegasus = Robot(joints, links)
+    thetaList = [0,0.5*np.pi, 0.25*np.pi, 0.25*np.pi, 0]
+    dthetaList = [0,1,0,0,0]
+    ddtheta = [0,1,1,1,1]
+    g = np.array([0,0,-9.81])
+    FTip = np.array([1,1,1,1,1,1])
+    Output:
+    [ 0.81  -1.343  0.767  1.754  0.958]
     """
     #Initialization
+    #DEBUG: REMOVE INVERSE FOR TLLLIST
     #Note: 6,shape is used to obtain column vectors for calculations.
     n = len(theta) #Number of joints
     Tsi = np.eye(4)
@@ -117,10 +127,8 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List, g: np.nd
                 np.dot(robot.GiList[i], dV[:,i+1]) - \
                 np.dot(mr.ad(V[:,i+1]).T, np.dot(robot.GiList[i], V[:,i+1]))
         elif i == n-2: #Pegasus arm specific mechanics
-            #NOTE: Wrench of next 'link' is FTip --> F[:,i+2]
-            F[:,i] = np.dot(AdTiiN[i+1].T, F[:,n]) + \
-                np.dot(robot.GiList[i], dV[:,i+2]) - \
-                np.dot(mr.ad(V[:,i+2]).T, np.dot(robot.GiList[i], V[:,i+2]))
+            #NOTE: Same wrench as F[:,n-1], as it is the same link
+            F[:,i] = F[:,i+1]
         """Obtain torques by projection through screwA, effectively a
         column of the Jacobian between wrenches/twists in {i} and 
         joint space"""
