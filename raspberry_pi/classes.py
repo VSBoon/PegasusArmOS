@@ -1,6 +1,6 @@
 import numpy as np
 import modern_robotics as mr
-import RPi.GPIO as gpio
+#import RPi.GPIO as gpio TEMP
 import time
 from typing import List
 
@@ -22,8 +22,7 @@ class Link():
         self.Gi[0:3,0:3] = inertiaMat
         self.Gi[3:6, 3:6] = np.diag([mass]*3, k=0)
         self.Tsi: np.ndarray = Tsi
-        """Tii is the transformation matrix from current 
-        link frame {i} to previous link frame {i-1}:"""
+        """Tii is the transformation matrix T_(i-1,i) in the home position:"""
         if prevLink == None:
             self.Tii = self.Tsi
         else:
@@ -52,7 +51,9 @@ class Joint():
     calculations."""
     def __init__(self, screwAx: np.ndarray, links: List[Link], gearRatio: 
                  float, km: float, cpr: int, lims: List[float] = 
-                 [-2*np.pi, 2*np.pi], inSpace: bool = True):
+                 [-2*np.pi, 2*np.pi], tauStat: float=0, tauKin: 
+                 float=0, bVisc: float=0, eff: float=1, 
+                 inSpace: bool = True):
         """Constructor for Joint class.
         :param screwAx: A 6x1 screw axis in the home configuration, per 
         Definition 3.24 of the Modern Robotics book.
@@ -62,6 +63,10 @@ class Joint():
         :param km: Motor constant in Nm/A
         :param cpr: Counts per revolution of the encoder shaft.
         :param lims: The joint limits, in the order [lower, upper].
+        :param tauStat: Static friction torque
+        :param tauKin: Kinetic friction torque
+        :param bVisc: Viscous damping coefficient in [(N/m)/(rad/s)]
+        :param eff: Torque efficiency
         :param inSpace: Notes if the screw axis is in the space frame
                         (True) or in the body frame (False).
         """        
@@ -72,6 +77,8 @@ class Joint():
         self.cpr = cpr
         self.enc2Theta = 1/(cpr*gearRatio) * 2*np.pi
         self.links: List[Link] = links
+        self.fricPar = dict(stat=tauStat, kin=tauKin, visc=bVisc,
+                            eff=eff)
         self.inSpace: bool = inSpace
     
     def __repr__(self):
@@ -116,207 +123,207 @@ class Robot():
                f"{self.links}\n GiList: {self.GiList}\n TllList: " +\
                f"{self.TllList}\n TsbHome: {self.TsbHome}"
 
-class Homing():
-    """Class for reading & storing homing sensor data.
-    NOTE: Only 1 Homing instance should exist at a time!"""
-    nInstances = 0
-    def __init__(self, homingPins: List[int]):
-        """Constructor for Homing class.
-        :param homingPins: List of homing pin ID numbers."""
-        Homing.nInstances += 1
-        if Homing.nInstances > 1:
-            print("Warning: Too many Homing instances!")
-        self.pins = homingPins
-        self.bools = [0 for i in range(len(homingPins))]
-        gpio.setmode(gpio.BOARD)
-        for i in range(len(self.pins)):
-            #Setup with internal pull-down resistor
-            gpio.setup(self.pins[i], gpio.IN, pull_up_down=gpio.PUD_DOWN)
-            gpio.add_event_detect(homingPins[i], gpio.BOTH, callback = \
-            lambda x: self.HomeRoutine(i))
+# class Homing():
+#     """Class for reading & storing homing sensor data.
+#     NOTE: Only 1 Homing instance should exist at a time!"""
+#     nInstances = 0
+#     def __init__(self, homingPins: List[int]):
+#         """Constructor for Homing class.
+#         :param homingPins: List of homing pin ID numbers."""
+#         Homing.nInstances += 1
+#         if Homing.nInstances > 1:
+#             print("Warning: Too many Homing instances!")
+#         self.pins = homingPins
+#         self.bools = [0 for i in range(len(homingPins))]
+#         gpio.setmode(gpio.BOARD)
+#         for i in range(len(self.pins)):
+#             #Setup with internal pull-down resistor
+#             gpio.setup(self.pins[i], gpio.IN, pull_up_down=gpio.PUD_DOWN)
+#             gpio.add_event_detect(homingPins[i], gpio.BOTH, callback = \
+#             lambda x: self.HomeRoutine(i))
 
-    def HomeRoutine(self, iterator: int):
-        """Routine to run when interrupt is called on a certain pin.
-        :param iterator: Index of both the pin in self.pins and the 
-                         associated boolean in self.bool."""
-        self.bools[iterator] = gpio.input(self.pins[iterator])
+#     def HomeRoutine(self, iterator: int):
+#         """Routine to run when interrupt is called on a certain pin.
+#         :param iterator: Index of both the pin in self.pins and the 
+#                          associated boolean in self.bool."""
+#         self.bools[iterator] = gpio.input(self.pins[iterator])
 
-    def CleanPins(self):
-        gpio.cleanup()
+#     def CleanPins(self):
+#         gpio.cleanup()
 
-class SerialData():
-    """Container class containing all relevant information and functions
-    for parsing and acting on data received over serial communication."""
-    def __init__(self, lenData: int, desAngles: 
-                 List[float], maxDeltaAngle: List[float], 
-                 angleTol: List[float], joints: List[Joint]) -> "SerialData":
-        """Constructor for SerialData class.
-        :param lenData: The expected number of data packets (equal to
-                        number of motor units).
-        :param desAngles: List of desired angles for each motor, in 
-                          radians (for position control).
-        :param maxDeltaAngle: Maximum change in each joint angle 
-                              between two received data packets (anti-
-                              corruption check).
-        :param joints: List of all Joint instances of the robot.
-        :param angleTol: Tolerance of each desired joint angle in 
-                         radians.
-        """
-        self.lenData = lenData
-        self.desAngle = desAngles
-        self.joints = joints
-        self.totCount = [0 for i in range(lenData)]
-        self.rotDirCurr = [None for i in range(lenData)]
-        self.current = [None for i in range(lenData)]
-        self.homing = [None for i in range(lenData)]
-        self.currAngle = [0 for i in range(lenData)]
-        self.prevAngle = [0 for i in range(lenData)]
-        self.mSpeed = [0 for i in range(lenData)]
-        self.rotDirDes = [0 for i in range(lenData)]
-        self.dataOut = ['0|0|0' for i in range(lenData)]
-        self.maxDeltaAngle = maxDeltaAngle
-        self.angleTol = angleTol
-        self.limBool = [False for i in range(lenData)]
+# class SerialData():
+#     """Container class containing all relevant information and functions
+#     for parsing and acting on data received over serial communication."""
+#     def __init__(self, lenData: int, desAngles: 
+#                  List[float], maxDeltaAngle: List[float], 
+#                  angleTol: List[float], joints: List[Joint]) -> "SerialData":
+#         """Constructor for SerialData class.
+#         :param lenData: The expected number of data packets (equal to
+#                         number of motor units).
+#         :param desAngles: List of desired angles for each motor, in 
+#                           radians (for position control).
+#         :param maxDeltaAngle: Maximum change in each joint angle 
+#                               between two received data packets (anti-
+#                               corruption check).
+#         :param joints: List of all Joint instances of the robot.
+#         :param angleTol: Tolerance of each desired joint angle in 
+#                          radians.
+#         """
+#         self.lenData = lenData
+#         self.desAngle = desAngles
+#         self.joints = joints
+#         self.totCount = [0 for i in range(lenData)]
+#         self.rotDirCurr = [None for i in range(lenData)]
+#         self.current = [None for i in range(lenData)]
+#         self.homing = [None for i in range(lenData)]
+#         self.currAngle = [0 for i in range(lenData)]
+#         self.prevAngle = [0 for i in range(lenData)]
+#         self.mSpeed = [0 for i in range(lenData)]
+#         self.rotDirDes = [0 for i in range(lenData)]
+#         self.dataOut = ['0|0|0' for i in range(lenData)]
+#         self.maxDeltaAngle = maxDeltaAngle
+#         self.angleTol = angleTol
+#         self.limBool = [False for i in range(lenData)]
 
-    def ExtractVars(self, dataPacket: List[str], homeObj: Homing):
-        """Extracts & translates information in each datapacket.
-        :param dataPacket: A string of the form 'totCount|rotDirCurr',
-                           where totCount is an integer and rotDirCurr
-                           a boolean (0 or 1). Potentially, it has an
-                           additional argument 'curr', being an int.
-        :param homeObj: Homing object to keep track of homing data.
+#     def ExtractVars(self, dataPacket: List[str], homeObj: Homing):
+#         """Extracts & translates information in each datapacket.
+#         :param dataPacket: A string of the form 'totCount|rotDirCurr',
+#                            where totCount is an integer and rotDirCurr
+#                            a boolean (0 or 1). Potentially, it has an
+#                            additional argument 'curr', being an int.
+#         :param homeObj: Homing object to keep track of homing data.
         
-        Example input:
-        dataPacket = '1234|0'
-        """
-        for i in range(self.lenData):
-            args = dataPacket[i].split('|')
-            if len(args) == 3:
-                self.current[i] = args[2]
-                self.current[i] = int(self.current[i])
-                #TODO: Add current[i] volt -> amp conversion
-            self.totCount[i], self.rotDirCurr[i] = args[0:2]
-            self.totCount[i] = int(self.totCount[i])
-            self.rotDirCurr[i] = int(self.rotDirCurr[i])
-            self.prevAngle[i] = self.currAngle[i]
-            if i == self.lenData-1:
-                    #Gripper doesn't have an 'angle'
-                    self.currAngle[i] = self.totCount[i]
-            else:
-                self.currAngle[i] = self.totCount[i] * self.joints[i].enc2Theta
-            if i == 2 or i == 3:
-                """Due to the unique mechanics of the robot, the 
-                encoder only measures the absolute angle of these joints,
-                not relative to the previous joint.
-                """
-                self.currAngle[i] -= self.totCount[i-1]*\
-                                     self.joints[i-1].enc2Theta
-            elif i == 4:
-                    self.currAngle[i] -= self.totCount[i-2]*\
-                                         self.joints[i-2].enc2Theta
-        #homeObj.bools is updated through interrupts.
-        self.homing = homeObj.bools
+#         Example input:
+#         dataPacket = '1234|0'
+#         """
+#         for i in range(self.lenData):
+#             args = dataPacket[i].split('|')
+#             if len(args) == 3:
+#                 self.current[i] = args[2]
+#                 self.current[i] = int(self.current[i])
+#                 #TODO: Add current[i] volt -> amp conversion
+#             self.totCount[i], self.rotDirCurr[i] = args[0:2]
+#             self.totCount[i] = int(self.totCount[i])
+#             self.rotDirCurr[i] = int(self.rotDirCurr[i])
+#             self.prevAngle[i] = self.currAngle[i]
+#             if i == self.lenData-1:
+#                     #Gripper doesn't have an 'angle'
+#                     self.currAngle[i] = self.totCount[i]
+#             else:
+#                 self.currAngle[i] = self.totCount[i] * self.joints[i].enc2Theta
+#             if i == 2 or i == 3:
+#                 """Due to the unique mechanics of the robot, the 
+#                 encoder only measures the absolute angle of these joints,
+#                 not relative to the previous joint.
+#                 """
+#                 self.currAngle[i] -= self.totCount[i-1]*\
+#                                      self.joints[i-1].enc2Theta
+#             elif i == 4:
+#                     self.currAngle[i] -= self.totCount[i-2]*\
+#                                          self.joints[i-2].enc2Theta
+#         #homeObj.bools is updated through interrupts.
+#         self.homing = homeObj.bools
 
-    def Dtheta2Mspeed(self, dtheta: "np.ndarray[float]", 
-                      dthetaMax: List[float], PWMMin: int, PWMMax: int):
-        """Translates desired motor velocities in rad/s to PWM.
-        :param dtheta: Numpy array of motor velocities in [rad/s].
-        :param dthetaMax: Angular velocity of each motor at a PWM of 255.
-        :param PWMMin: Minimum PWM value necessary to move the motor.
-        :param PWMMax: Maximum PWM value that the motors can be given.
-        """
-        if dtheta.size != self.lenData-1: #-1 for gripper
-            raise InputError("size of dtheta != lenData-1: " +
-                             f"{dtheta.size} != {self.lenData-1}")
-        else:
-            self.mSpeed = [PWMMin + round((dtheta[i]/dthetaMax[i])*(PWMMax-PWMMin)) 
-            for i in range(self.lenData-1)] #Rudimentary solution, PID will help!
+#     def Dtheta2Mspeed(self, dtheta: "np.ndarray[float]", 
+#                       dthetaMax: List[float], PWMMin: int, PWMMax: int):
+#         """Translates desired motor velocities in rad/s to PWM.
+#         :param dtheta: Numpy array of motor velocities in [rad/s].
+#         :param dthetaMax: Angular velocity of each motor at a PWM of 255.
+#         :param PWMMin: Minimum PWM value necessary to move the motor.
+#         :param PWMMax: Maximum PWM value that the motors can be given.
+#         """
+#         if dtheta.size != self.lenData-1: #-1 for gripper
+#             raise InputError("size of dtheta != lenData-1: " +
+#                              f"{dtheta.size} != {self.lenData-1}")
+#         else:
+#             self.mSpeed = [PWMMin + round((dtheta[i]/dthetaMax[i])*(PWMMax-PWMMin)) 
+#             for i in range(self.lenData-1)] #Rudimentary solution, PID will help!
 
-    def CheckCommFault(self) -> bool:
-        """Checks if data got corrupted using a maximum achievable 
-        change in angle between two timesteps.
-        :return commFault: Boolean indicating if new angle is 
-                           reasonable (False) or not (True).
+#     def CheckCommFault(self) -> bool:
+#         """Checks if data got corrupted using a maximum achievable 
+#         change in angle between two timesteps.
+#         :return commFault: Boolean indicating if new angle is 
+#                            reasonable (False) or not (True).
         
-        Known issue: If commFault occurs because maxDeltaAngle is 
-        too low, i.e. the encoder actually moved more than maxDelta-
-        Angle in one step, then the motor ceases to run because 
-        the condition will now always be True.
-        """
-        commFault = [False for i in range(self.lenData)]
-        for i in range(self.lenData):
-            if abs(self.prevAngle[i] - self.currAngle[i]) >= self.maxDeltaAngle[i]:
-                commFault[i] = True
-                self.currAngle[i] = self.prevAngle[i]
-                self.mSpeed[i] = 0
-                self.homing[i] = 0
-                self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}|{self.homing[i]}"
-        return commFault
+#         Known issue: If commFault occurs because maxDeltaAngle is 
+#         too low, i.e. the encoder actually moved more than maxDelta-
+#         Angle in one step, then the motor ceases to run because 
+#         the condition will now always be True.
+#         """
+#         commFault = [False for i in range(self.lenData)]
+#         for i in range(self.lenData):
+#             if abs(self.prevAngle[i] - self.currAngle[i]) >= self.maxDeltaAngle[i]:
+#                 commFault[i] = True
+#                 self.currAngle[i] = self.prevAngle[i]
+#                 self.mSpeed[i] = 0
+#                 self.homing[i] = 0
+#                 self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}|{self.homing[i]}"
+#         return commFault
     
-    def CheckTolAng(self) -> bool:
-        """Determines if the desired angle has been reached within the 
-        given tolerance, and if the desired angle is reachable.
-        If the desired angle is unreachable, the closest angle is chosen.
-        :return success: Indicates if the angle is within the 
-        tolerance of the goal angle (True) or not (False).
-        """
-        success = [False for i in range(self.lenData)]
-        for i in range(self.lenData):
-            if self.desAngle[i] < self.joints[i].lims[0]:
-                self.desAngle[i] = self.joints[i].lims[0]
-            elif self.desAngle[i] > self.joints[i].lims[1]:
-                self.desAngle[i] = self.joints[i].lims[1] 
-            if abs(self.currAngle[i] - self.desAngle[i]) <= self.angleTol[i]:
-                success[i] = True
-                self.mSpeed[i] = 0
-                self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}|{self.homing[i]}"
-        return success
+#     def CheckTolAng(self) -> bool:
+#         """Determines if the desired angle has been reached within the 
+#         given tolerance, and if the desired angle is reachable.
+#         If the desired angle is unreachable, the closest angle is chosen.
+#         :return success: Indicates if the angle is within the 
+#         tolerance of the goal angle (True) or not (False).
+#         """
+#         success = [False for i in range(self.lenData)]
+#         for i in range(self.lenData):
+#             if self.desAngle[i] < self.joints[i].lims[0]:
+#                 self.desAngle[i] = self.joints[i].lims[0]
+#             elif self.desAngle[i] > self.joints[i].lims[1]:
+#                 self.desAngle[i] = self.joints[i].lims[1] 
+#             if abs(self.currAngle[i] - self.desAngle[i]) <= self.angleTol[i]:
+#                 success[i] = True
+#                 self.mSpeed[i] = 0
+#                 self.dataOut[i] = f"{self.mSpeed[i]}|{self.rotDirDes[i]}|{self.homing[i]}"
+#         return success
 
-    def CheckJointLim(self):
-        """Stops motors from running if the current angle goes past 
-        the indicated joint limit.
-        """
-        #TODO: MAKE SEPERATE GRIPPER FUNCTIONS
-        for i in range(self.lenData-1): #-1 for gripper
-            self.limBool[i] = False
-            if self.currAngle[i] < self.joints[i].lims[0] and \
-               self.rotDirDes[i] == 1 and self.mSpeed[i] != 0:
-                print(f"Lower lim reached: {self.rotDirDes[i]}")
-                self.mSpeed[i] = 0
-                self.limBool[i] = True
-            elif self.currAngle[i] > self.joints[i].lims[1] and \
-                self.rotDirDes[i] == 0 and self.mSpeed[i] != 0:
-                print(f"Upper lim reached: {self.rotDirDes[i]}")
-                self.mSpeed[i] = 0
-                self.limBool[i] = True
+#     def CheckJointLim(self):
+#         """Stops motors from running if the current angle goes past 
+#         the indicated joint limit.
+#         """
+#         #TODO: MAKE SEPERATE GRIPPER FUNCTIONS
+#         for i in range(self.lenData-1): #-1 for gripper
+#             self.limBool[i] = False
+#             if self.currAngle[i] < self.joints[i].lims[0] and \
+#                self.rotDirDes[i] == 1 and self.mSpeed[i] != 0:
+#                 print(f"Lower lim reached: {self.rotDirDes[i]}")
+#                 self.mSpeed[i] = 0
+#                 self.limBool[i] = True
+#             elif self.currAngle[i] > self.joints[i].lims[1] and \
+#                 self.rotDirDes[i] == 0 and self.mSpeed[i] != 0:
+#                 print(f"Upper lim reached: {self.rotDirDes[i]}")
+#                 self.mSpeed[i] = 0
+#                 self.limBool[i] = True
 
     
-    def GetDir(self):
-        """Gives the desired direction of rotation
-        """
-        for i in range(self.lenData):
-            if self.currAngle[i] <= self.desAngle[i] and \
-            self.rotDirCurr[i] != 0:
-                self.rotDirDes[i] = 0
-            elif self.currAngle[i] > self.desAngle[i] and self.rotDirCurr[i] != 1:
-                self.rotDirDes[i] = 1
-            else:
-                self.rotDirDes[i] = self.rotDirCurr[i]
+#     def GetDir(self):
+#         """Gives the desired direction of rotation
+#         """
+#         for i in range(self.lenData):
+#             if self.currAngle[i] <= self.desAngle[i] and \
+#             self.rotDirCurr[i] != 0:
+#                 self.rotDirDes[i] = 0
+#             elif self.currAngle[i] > self.desAngle[i] and self.rotDirCurr[i] != 1:
+#                 self.rotDirDes[i] = 1
+#             else:
+#                 self.rotDirDes[i] = self.rotDirCurr[i]
     
-    def PControl1(self, i: int, mSpeedMax: int, mSpeedMin: int):
-        """Gives motor speed commands proportional to the angle error.
-        :param i: Current iteration number.
-        :param mSpeedMax: Maximum rotational speed, 
-                          portrayed in PWM [0, 255].
-        :param mSpeedMin: Minimum rotational speed, 
-                          portrayed in PWM [0, 255]."""
-        angleErr = abs(self.desAngle[i] - self.currAngle[i])
-        self.mSpeed[i] = int(mSpeedMin + (angleErr/(10*np.pi))* \
-                            (mSpeedMax - mSpeedMin))
-        if self.mSpeed[i] > mSpeedMax:
-            self.mSpeed[i] = mSpeedMax
-        elif self.mSpeed[i] < mSpeedMin:
-            self.mSpeed[i] = mSpeedMin
+#     def PControl1(self, i: int, mSpeedMax: int, mSpeedMin: int):
+#         """Gives motor speed commands proportional to the angle error.
+#         :param i: Current iteration number.
+#         :param mSpeedMax: Maximum rotational speed, 
+#                           portrayed in PWM [0, 255].
+#         :param mSpeedMin: Minimum rotational speed, 
+#                           portrayed in PWM [0, 255]."""
+#         angleErr = abs(self.desAngle[i] - self.currAngle[i])
+#         self.mSpeed[i] = int(mSpeedMin + (angleErr/(10*np.pi))* \
+#                             (mSpeedMax - mSpeedMin))
+#         if self.mSpeed[i] > mSpeedMax:
+#             self.mSpeed[i] = mSpeedMax
+#         elif self.mSpeed[i] < mSpeedMin:
+#             self.mSpeed[i] = mSpeedMin
 
 ### ERROR CLASSES
 class IKAlgorithmError(BaseException):
@@ -350,11 +357,11 @@ class InputError(BaseException):
     def __str__(self):
         return self.message
 
-if __name__ == "__main__":
-        #Test homeObj
-        now = time.time()
-        RPiHoming = Homing([3,5,7,11,13,15])
-        while time.time() - now < 5:
-                print(RPiHoming.bools)
-        print("Quitting...")
-        RPiHoming.CleanPins()
+# if __name__ == "__main__":
+#         #Test homeObj
+#         now = time.time()
+#         RPiHoming = Homing([3,5,7,11,13,15])
+#         while time.time() - now < 5:
+#                 print(RPiHoming.bools)
+#         print("Quitting...")
+#         RPiHoming.CleanPins()
