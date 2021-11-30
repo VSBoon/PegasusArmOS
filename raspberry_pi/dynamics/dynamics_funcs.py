@@ -6,7 +6,7 @@ current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
 sys.path.append(parent)
 
-from classes import Robot
+from classes import Robot, Joint, Link
 from typing import List, Tuple
 import modern_robotics as mr
 import numpy as np
@@ -14,6 +14,7 @@ import numpy as np
 """ NOTE: IF NOT TESTED ON RPi, ALL MENTIONS OF RPi LIBRARY SHOULD BE
     REMOVED FROM ALL IMPORTS BEFORE RUNNING THESE TESTS!
 """
+np.set_printoptions(precision=3)
 
 def LossComp(tauComm: float, dtheta: float,  tauStat: float, 
             bVisc: float, tauKin: float, eff: float) -> float:
@@ -59,8 +60,8 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
     :return tau: A list of required joint torques at the output shaft.
 
     Example input:
-    (Joints and links init not included for brevity)
-    Pegasus = Robot(joints, links)
+    (Init of Robot parameters not included for brevity)
+    robot = Robot(joints, links, TsbHome)
     thetaList = [0,0.5*np.pi, 0.25*np.pi, 0.25*np.pi, 0]
     dthetaList = [0,1,0,0,0]
     ddtheta = [0,1,1,1,1]
@@ -127,8 +128,9 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
                 np.dot(robot.GiList[i], dV[:,i+1]) - \
                 np.dot(mr.ad(V[:,i+1]).T, np.dot(robot.GiList[i], V[:,i+1]))
         elif i == n-2: #Pegasus arm specific mechanics
-            #NOTE: Same wrench as F[:,n-1], as it is the same link
-            F[:,i] = F[:,i+1]
+            F[:,i] = np.dot(AdTiiN[i+2].T, F[:,i+2]) + \
+                np.dot(robot.GiList[i], dV[:,i+1]) - \
+                np.dot(mr.ad(V[:,i+1]).T, np.dot(robot.GiList[i], V[:,i+1]))
         """Obtain torques by projection through screwA, effectively a
         column of the Jacobian between wrenches/twists in {i} and 
         joint space"""
