@@ -1,5 +1,6 @@
 import os
 import sys
+from modern_robotics.core import GravityForces
 
 #Find directory path of current file
 current = os.path.dirname(os.path.realpath(__file__))
@@ -10,7 +11,7 @@ sys.path.append(parent)
 import numpy as np
 import modern_robotics as mr
 from classes import Robot, Link, Joint
-from dynamics.dynamics_funcs import LossComp, FeedForward
+from dynamics.dynamics_funcs import LossComp, FeedForward, MassMatrix, CorrCentTorques, GravTorques, FTipTorques, ForwardDynamics, SimulateStep
 
 np.set_printoptions(precision=3)
 
@@ -329,12 +330,83 @@ def test_FFOptFTip():
     assert all(np.greater(tau3[1:-2], tau[1:-2]))
     assert np.isclose(tau3[-1], tau[-1], atol=1e-3)
 
+def test_MassMatrixOrth():
+    """Test if rigidly connected orthogonal screw axes do not
+    affect eachother in terms of torques caused by joint accelleration.
+    """
+    theta = np.random.rand(5)
+    M = MassMatrix(robot, theta)
+    assert M[4,3] == M[3,4] and M[4,3] == 0 and M[0,0] != 0
 
+def test_CorrCent():
+    """Assert if the torques required to overcome coriolis- and 
+    centripetal forces is zero when no velocity is present, and non-
+    zero in its presence."""
+    theta = np.random.rand(5)
+    dtheta = [0,0,0,0,0]
+    tauC = CorrCentTorques(robot, theta, dtheta)
+    assert not tauC.any() and tauC.size == len(theta)
+    dtheta = np.random.rand(5)
+    tauC = CorrCentTorques(robot, theta, dtheta)
+    assert tauC.all()
 
-if __name__ == "__main__":
-    theta = [0,0.5*np.pi, 0.25*np.pi, 0.25*np.pi, 0]
-    dtheta = [0,1,0,0,0]
-    ddtheta = [100,100,100,100,100]
+def test_Grav():
+    """Check if the torques required to overcome gravity is 
+    zero in absence of gravity, and non-zero is its presence."""
+    theta = np.random.rand(5)
+    g = np.array([0,0,0])
+    tauG = GravTorques(robot, theta, g)
+    assert not tauG.any() and tauG.size == len(theta)
     g = np.array([0,0,-9.81])
-    FTip = np.array([1,1,1,1,1,1])
-    print(FeedForward(robot, theta, dtheta, ddtheta, g, FTip))
+    tauG = GravTorques(robot, theta, g)
+    """Always some small factor, due to link CoM's never being 
+    perfectly aligned with a screw axis"""
+    assert tauG.all()
+
+def test_FD():
+    """Ascertain if Forward Dynamics obtains non-zero joint accele-
+    ration for non-zero inputs, and zero joint acc. for all dynamic
+    inputs being zero."""
+    theta = [0,0,0,0,0]
+    dtheta = [0,0,0,0,0]
+    tau = np.zeros(5)
+    g = np.zeros(3)
+    FTip = np.zeros(6)
+    ddtheta = ForwardDynamics(robot, theta, dtheta, tau, g, FTip)
+    assert all(a == 0 for a in ddtheta)
+
+    theta = np.random.rand(5)
+    dtheta = np.random.rand(5)
+    tau = np.random.rand(5)
+    g = np.array([0,0,-9.81])
+    FTip = np.random.rand(6)
+    ddtheta = ForwardDynamics(robot, theta, dtheta, tau, g, FTip)
+    assert all(a != 0 for a in ddtheta)
+
+def test_SimStep():
+    """Test if Simulate step does not change configuration and velocity
+    if there is no net torque on each joint. Moreover, confirm the change
+    in configuration and velocity for non-zero net torque."""
+    thetaPrev = [0,0,0,0,0]
+    dthetaPrev = [0,0,0,0,0]
+    ddthetaPrev = [0,0,0,0,0]
+    tau = np.zeros(5)
+    g = np.zeros(3)
+    FTip = np.zeros(6)
+    dt = 0.1
+    thetaTup = SimulateStep(robot, thetaPrev, dthetaPrev, ddthetaPrev, tau, g, 
+                 FTip, dt)
+    for i in range(len(thetaTup)):
+        for j in range(len(thetaTup[i])):
+            assert thetaTup[i][j] == 0
+    thetaPrev = np.random.rand(5)
+    dthetaPrev = np.random.rand(5)
+    ddthetaPrev = np.random.rand(5)
+    tau = np.random.rand(5)
+    g = np.array([0,0,-9.81])
+    FTip = np.random.rand(6)
+    thetaTup = SimulateStep(robot, thetaPrev, dthetaPrev, ddthetaPrev, tau, g, 
+                 FTip, dt)
+    for i in range(len(thetaTup)):
+        for j in range(len(thetaTup[i])):
+            assert thetaTup[i][j] != 0
