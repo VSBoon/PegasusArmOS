@@ -125,6 +125,9 @@ def IKSpace(TsbHome: np.ndarray, TsbTarget: np.ndarray, spaceScrews:
         thetaList, success = mr.IKinSpace(spaceMat, TsbHome, TsbTarget, 
                                           thetaGuessList, eomg=eRad, ev=eLin)
     if not success:
+        print("Best guess: ", thetaList)
+        print("Leads to:\n", FKSpace(TsbHome, spaceScrews, thetaList))
+        print("Versus original:\n", TsbTarget)
         raise IKAlgorithmError()
     #Normalize & check limits
     for i in range(nJoints):

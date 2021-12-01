@@ -6,7 +6,7 @@ current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
 sys.path.append(parent)
 
-from classes import Robot, Joint, Link, DimensionError
+from classes import Robot, Joint, Link, DimensionError, IKAlgorithmError
 from kinematics.kinematic_funcs import IKSpace
 import modern_robotics as mr
 import numpy as np
@@ -15,7 +15,7 @@ from typing import Union, List, Tuple
 def TrajGen(startConfig: Union[np.ndarray, List[float]], endConfig: 
     Union[np.ndarray, List[float]], vMax: float,
     omgMax: float, dt: float, method: str="screw", timeScaling: int=5) -> \
-    Tuple[np.ndarray, List[float]]:
+    Tuple[np.ndarray, np.ndarray]:
     """Calculates a straight-line trajectory between two 
     configurations, eitherin screw-, joint-, or cartesian space.
     :param startConfig: The starting configuration, either as a list of
@@ -43,7 +43,7 @@ def TrajGen(startConfig: Union[np.ndarray, List[float]], endConfig:
     Output:
 
     """
-    if timeScaling != 3 | timeScaling != 5:
+    if timeScaling != 3 and timeScaling != 5:
                 print("Invalid timeScaling; defaulting to quintic.")
                 timeScaling = 5
     if method == "joint" or method == "Joint":
@@ -79,20 +79,20 @@ def TrajGen(startConfig: Union[np.ndarray, List[float]], endConfig:
             tTot = distTot/vMax
             nSubConfigs = int(tTot/dt)
             if method == "screw" or method == "Screw":
-                traj = mr.ScrewTrajectory(startConfig, endConfig, tTot, 
-                nSubConfigs, timeScaling)
+                traj = np.array(mr.ScrewTrajectory(startConfig, endConfig, tTot, 
+                nSubConfigs, timeScaling))
             elif method == "cartesian" or method == "Cartesian":
-                traj = mr.CartesianTrajectory(startConfig, endConfig, 
-                tTot, nSubConfigs, timeScaling)
+                traj = np.array(mr.CartesianTrajectory(startConfig, endConfig, 
+                tTot, nSubConfigs, timeScaling))
             else:
                 raise SyntaxError("Invalid method input. Please choose " + 
                                   "between 'joint', 'screw', or 'cartesian'")
-    timeList = [dt * (tTot/(nSubConfigs-1)) for dt in range(0, nSubConfigs)]
+    timeList = np.array([dt * (tTot/(nSubConfigs-1)) for dt in range(0, nSubConfigs)])
     return traj, timeList
 
 def TrajDerivatives(traj: Union[List[np.ndarray], List[List[float]]], 
                     method: str, robot: Robot, dt: float) \
-                    -> Tuple[List[List[float]]]:
+                    -> Tuple[np.ndarray]:
     """Calculates the time derivatives of a sequential list of 
     configurations.
     :param traj: List of sequential configurations in either the joint- 
@@ -105,61 +105,92 @@ def TrajDerivatives(traj: Union[List[np.ndarray], List[List[float]]],
     :return trajVel: The joint velocities during the trajectory.
     :return trajAcc: The join accelerations during the trajectory.
     Example input:
+    (Init of joints & links not included for sake of brevity)
+    robot = Robot(joints, links, TsbHome)
+    sConfig = [0,0,0,0,0]
+    fConfig = [1,1,1,1,1]
+    vMax = 1
+    omgMax = 1
+    dt = 0.02
+    method = 'joint'
+    traj = TrajGen(sConfig, fConfig, vMax, omgMax, dt, method)[0]
 
     Output:
-    
-    TODO: FINISH DOCSTRING
+    [[0.00000000e+00 0.00000000e+00 0.00000000e+00 0.00000000e+00
+    0.00000000e+00]
+    [7.31859478e-05 7.31859478e-05 7.31859478e-05 7.31859478e-05
+    7.31859478e-05]...]
+
+    [[-1.00000000e+01 -1.00000000e+01 -1.00000000e+01 -1.00000000e+01
+    -1.00000000e+01]
+    [ 7.31859478e-04  7.31859478e-04  7.31859478e-04  7.31859478e-04
+    7.31859478e-04]...]
+
+    [[-1.00000000e+02 -1.00000000e+02 -1.00000000e+02 -1.00000000e+02
+    -1.00000000e+02]
+    [ 1.00007319e+02  1.00007319e+02  1.00007319e+02  1.00007319e+02
+    1.00007319e+02]...]
     """
+    trajTheta = np.zeros((len(traj),len(robot.joints)))
+    trajVel = trajTheta.copy()
+    trajAcc = trajTheta.copy()
     if method != "joint" and method != "Joint":
-        # robot.links[-1].Tsi = TsbHome, the end-effector frame described in
+        # robot.TllList[-1] = TsbHome, the end-effector frame described in
         # the space frame at the home configuration of the robot.
-        trajTheta = [IKSpace(robot.links[-1].Tsi, traj[i], robot.screwAxes, 
-                     robot.lims)[0].tolist() for i in range(len(traj))]
+        lims = [robot.joints[i].lims for i in range(len(robot.joints))]
+        for i in range(len(traj)): 
+            trajTheta[i], success = IKSpace(robot.TllList[-1], traj[i], 
+            robot.screwAxes, lims, eRad=0.03, eLin=0.03)
+            if not success:
+                """A straight path in end-effector space might move 
+                through configurations that fall outside of the 
+                C-space of the joints, as the C-space of the end-
+                effector is likely non-convex. """
+                raise IKAlgorithmError()
     else:
         trajTheta = traj
-    trajVel = [(trajTheta[i] - trajTheta[i-1])/dt 
-                for i in range(1, len(trajTheta))]
-    trajAcc = [(trajVel[i] - trajVel[i-1])/dt 
-               for i in range(1, len(trajTheta)-1)]
+    #Euler integration. Might consider changing to trapezoidal
+    for i in range(len(trajTheta)):
+        trajVel[i] = (trajTheta[i] - trajTheta[i-1])/dt
+        trajAcc[i] = (trajVel[i] - trajVel[i-1])/dt 
     return trajTheta, trajVel, trajAcc
 
 if __name__ == "__main__":
+    ###ROBOT INITIALISATION###
     #Inertia matrices
-    iMat0 = np.diag([0.03584238, 0.02950513, 0.04859042])
-    iMat1 = np.diag([0.00393345, 0.00236823, 0.00171701])
-    iMat2 = np.diag([0.0092912, 0.00210452, 0.0029424])
-    iMat34 = np.diag([0.00363966, 0.00347835, 0.00041124])
-    massList = [4.99, 0.507, 0.420, 0.952, 0.952]
+    iMat0 = np.diag([0.03947, 0.03362, 0.04886])
+    iMat1 = np.diag([0.00393, 0.00237, 0.00172])
+    iMat2 = np.diag([0.00294, 0.00210, 0.0029])
+    iMat34 = np.diag([0.00041, 0.00348, 0.00364])
+    massList = [5.13, 0.507, 0.420, 0.952, 0.952]
     #Transformation matrices from CoM of links with principle axes of
     #inertia to the space frame (Tsi):
-    Tsi0 = np.array([[0.3804 ,-0.9215,0.0786 ,-0.0103],
-                     [0.8774 ,0.3864 ,0.2843 ,-0.0292],
-                     [-0.2924,-0.0392,0.9555 ,0.0642 ],
-                     [0      ,0      ,0      ,1      ]])
-    Tsi1 = np.array([[-0.0002,0.0008 ,-1.0000,0.0350 ],
-                     [0.4553 ,0.8903 ,0.0007 ,-0.0083],
-                     [0.8903 ,-0.4553,-0.0006,0.1666 ],
-                     [0      ,0      ,0      ,1      ]])
-    Tsi2 = np.array([[-0.9966,0.0819 ,-0.0003,0.0814 ],
-                     [-0.0819,-0.9966,0.0008 ,-0.0083],
-                     [-0.0002,0.0008 ,1.0000 ,0.3550 ],
-                     [0      ,0      ,0      ,1      ]])
-    Tsi34 = np.array([[-0.0326,0.0002 ,-0.9995,0.2640 ],
-                      [-0.0004,1.0000 ,0.0002 ,-0.0059],
-                      [-0.9995,0.0004 ,-0.0326,0.3504 ],
-                      [0      ,0      ,0      ,1      ]])
+    Tsi0 = np.array([[ 0.397, 0.838,-0.375, 0.0284],
+                    [-0.909, 0.416,-0.033,-0.0413],
+                    [ 0.129, 0.354, 0.926, 0.0522],
+                    [0    , 0     , 0    , 1     ]])
+    Tsi1 = np.array([[ 0.000, 0.455, 0.890, 0.0015],
+                    [ 0.001, 0.890,-0.455, 0.0026],
+                    [-1.000, 0.007, 0.001, 0.0039],
+                    [0    , 0     , 0    , 1     ]])
+    Tsi2 = np.array([[-0.003, 0.082, 0.997, 0.0009],
+                    [ 0.001, 0.997,-0.082, 0.0021],
+                    [-1.000, 0.001,-0.003, 0.0029],
+                    [0    , 0     , 0    , 1     ]])
+    Tsi34 = np.array([[-0.999, 0.000, -0.035, 0.0076],
+                    [0.000, -1.000, -0.000,-0.0159],
+                    [-0.035, -0.000, 0.999, 0.5840],
+                    [0    , 0     , 0    , 1     ]])
+    TsbHome = np.array([[1,0,0, 0.1474],
+                        [0,1,0,-0.0168],
+                        [0,0,1, 0.5853],
+                        [0,0,0, 1     ]])
     #Screw axes in the Space Frame {s}
     S0 = np.array([0,0,1,0,0,0])
-    S1 = np.array([0,1,0,-0.0035,0,0.126])
-    S2 = np.array([0,1,0,-0.0035,0,0.335])
-    S3 = np.array([0,1,0,-0.234,0,0.355])
-    S4 = np.array([0,0,1,-0.234,-0.016,0])
-    #Joint limits in home configuration, of the form [lower, upper]:
-    """IMPORTANT NOTE: The encoder values are those of the joint angles 
-    RELATIVE TO GROUND, instead of relative to the previous link.
-    Code has to be written which commands joint angles which have been
-    iteratively added, i.e: theta6 = theta5 + theta6Command. To ensure
-    relative angles stay the same."""
+    S1 = np.array([0,1,0,-0.125,0,0.0035])
+    S2 = np.array([0,1,0,-0.355,0,0.0035])
+    S3 = np.array([0,1,0,-0.585,0,0.0030])
+    S4 = np.array([1,0,0,0,0.585,0.016])
     lims0 = [-0.945*np.pi, 0.945*np.pi] #+/- 170 deg
     lims1 = [-0.25*np.pi, 0.5*np.pi] #-45 deg, + 90 deg
     lims2 = [-np.pi, 0.25*np.pi] #-180 deg, + 45 deg.
@@ -171,17 +202,24 @@ if __name__ == "__main__":
     L1 = Link(iMat1, massList[1], L0, Tsi1)
     L2 = Link(iMat2, massList[2], L1, Tsi2)
     L34 = Link(iMat34, massList[3], L2, Tsi34)
-    J0 = Joint(S0, [None, L0], gearRatioList[0], cpr, lims0)
-    J1 = Joint(S1, [L0, L1], gearRatioList[1], cpr, lims1)
-    J2 = Joint(S2, [L1, L2], gearRatioList[2], cpr, lims2)
-    J3 = Joint(S3, [L2,34], gearRatioList[3], cpr, lims3)
-    J4 = Joint(S4, [L2,L34], gearRatioList[4], cpr, lims4)
-    Pegasus = Robot([J0, J1, J2, J3, J4], [L0, L1, L2, L34])
+    links = [L0, L1, L2, L34, L34]
+    km = [22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3), 22.7*10**(-3),
+            22.7*10**(-3), 22.7*10**(-3), 9.2*10**(-3)] 
+    J0 = Joint(S0, [None, L0], gearRatioList[0], km[0], cpr, lims0)
+    J1 = Joint(S1, [L0, L1], gearRatioList[1], km[1], cpr, lims1)
+    J2 = Joint(S2, [L1, L2], gearRatioList[2], km[2], cpr, lims2)
+    J3 = Joint(S3, [L2,L34], gearRatioList[3], km[3], cpr, lims3)
+    J4 = Joint(S4, [L2,L34], gearRatioList[4], km[4], cpr, lims4)
+    joints = [J0, J1, J2, J3, J4]
+    Pegasus = Robot(joints, links, TsbHome)
+    ###END OF ROBOT INIT###
     startConfig = [0,0,0,0,0]
-    endConfig = [0.5*np.pi, 0.2*np.pi, 0.1*np.pi, 0.3*np.pi, 0.4*np.pi]
-    vMax = 0.5
-    omgMax = 0.2
-    dt = 0.1
-    traj, timeList = TrajGen(startConfig, endConfig, vMax, omgMax, dt, method="joint", timeScaling=5)
+    endConfig = [1,1,1,1,1]
+    vMax = 1
+    omgMax = 1
+    dt = 0.02
+    traj, timeList = TrajGen(startConfig, endConfig, vMax, omgMax, dt, method="joint")
     trajTheta, trajVel, trajAcc = TrajDerivatives(traj, robot=Pegasus, method="joint", dt=0.1)
-    print(trajTheta[-1])
+    print(trajTheta)
+    print(trajVel)
+    print(trajAcc)
