@@ -160,8 +160,8 @@ def PID(ref: "np.ndarray[float]", Fdb: "np.ndarray[float]",
         kD: "np.ndarray[float]", termI: "np.ndarray[float]", 
         ILim: "np.ndarray[float]", dt: float, errPrev: 
         "np.ndarray[float]") -> Tuple["np.ndarray[float]"]:
-        """Adds discrete PID error control to a reference signal, 
-        given a feedback signal and PID constants.
+        """Computes discrete PID error control given a reference 
+        signal, a feedback signal, and PID constants.
         :param ref: Reference / Feed-forward signal.
         :param Fdb: Feedback signal.
         :param kP: nxn proportional matrix, typically an identity
@@ -205,5 +205,5 @@ def PID(ref: "np.ndarray[float]", Fdb: "np.ndarray[float]",
             trpz = dt*(np.add(errPrev, err))/2
             np.add(termI, np.dot(kI, trpz), out=termI, casting="unsafe")
         termD = np.dot(kD, (np.subtract(err, errPrev)/dt))
-        refWPID = np.add(np.add(np.add(ref, termP), termI), termD)
-        return refWPID, termI, err
+        PID = np.add(np.add(termP, termI), termD)
+        return PID, termI, err
