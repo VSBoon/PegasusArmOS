@@ -153,11 +153,11 @@ class SerialData():
         for i in range(self.lenData):
             args = dataPacket[i].split('|')
             if len(args) == 3:
-                self.current[i] = args[2]
-                self.current[i] = float(self.current[i])
-            if len(args) == 4:
-                self.homing[i] = args[3]
+                self.homing[i] = args[2]
                 self.homing[i] = int(self.homing[i])
+            if len(args) == 4:
+                self.current[i] = args[3]
+                self.current[i] = float(self.current[i])
             self.totCount[i], self.rotDirCurr[i] = args[0:2]
             self.totCount[i] = int(self.totCount[i])
             self.rotDirCurr[i] = int(self.rotDirCurr[i])

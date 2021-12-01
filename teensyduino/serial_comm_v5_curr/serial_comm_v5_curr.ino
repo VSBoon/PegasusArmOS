@@ -21,7 +21,7 @@ const byte mPins[nCommands][2] = {};
 //Encoder pins
 const byte ePins[nCommands][2] = {{1,2}, {4,10}, {13,14}, {16, 17}, {19, 20}, {22, 23}};
 
-//Current sensor pins
+//Current sensor pins. NOTE: If turned off, be sure to use serial_comm_v5.
 const byte cPins[nCommands] = {38, 39, 40, 41, 14, 15};
 
 //Homing pins
@@ -93,6 +93,16 @@ void loop() {
     //Read current- & homing sensor
     for(int i = 0; i < nCommands; i++) {
       homing[i] = digitalRead(hPins[i]);
+      //Current PD loop:
+      currErrPrev = currErr
+      currDes = mSpeed[i]*(2/255) //<-- Check factor PWM -> I
+      //TODO: make curr[i] a running average for noise suppression!
+      curr[i] = (analogRead(cPins[i])-514)*(5/514)
+      currErr = currDes - curr[i]
+      currP = currErr*kp
+      currD = ((currErr - currErrPrev)/dtSense)*kd
+      currS[i] = currDes + currP + currD
+      mSpeed[i] = mSpeed[i] + int(currS[i]*(255/2) + 0.5) //+0.5 for rounding
     }
     senseTimer = 0;
   }
@@ -111,6 +121,8 @@ void loop() {
         Serial.write(rotDirBuff[i]);
         Serial.write('|');
         Serial.write(homing[i]);
+        Serial.write('|');
+        Serial.write(currBuff[i]);
         Serial.write(']');
       }
       Serial.write('\r');
