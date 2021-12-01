@@ -168,11 +168,11 @@ def MassMatrix(robot: Robot, theta: List) -> np.ndarray:
     """
     n = len(theta)
     M = np.zeros((n,n))
-    dtheta = [0] * n
+    dtheta = [0 for i in range(n)]
     g = np.array([0,0,0])
     FTip = np.array([0,0,0,0,0,0])
     for i in range(n): #Obtain the ith column of the mass matrix
-        ddtheta = [0] * n
+        ddtheta = [0 for i in range(n)]
         ddtheta[i] = 1 
         M[:, i] = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
     return M
