@@ -231,7 +231,7 @@ def CheckKeysJoint(SPData: SerialData, pressed: Dict[str, bool],
 
 def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu: 
                         serial.Serial, dtComm: float, dtPrint: float, 
-                        dtInput: float, homeObj: Homing, encAlg: 
+                        dtInput: float, encAlg: 
                         str = 'utf-8', holdStill: bool = False, kP: 
                         "np.ndarray[float]"=0, kI: "np.ndarray[float]"=0, 
                         kD: "np.ndarray[float]"=0, ILim=[100,100,100,100,100]):
@@ -243,7 +243,6 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
     :param dtInput: Interval of checking for user inputs in seconds.
     :param dtPrint: Interval between printing robot data on the 
                     terminal in seconds.
-    :param homeObj: Homing object reading & storing homing sensor data.
     :param encAlg: Encoding algorithm for serial communication.
     :param holdStill: Indicates if position should be actively held if 
                       the arm is not moved.
@@ -287,7 +286,7 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
     try:
         while True: #Main loop
             lastCheck = SReadAndParse(SPData, lastCheck, dtComm, 
-                                      localMu, homeObj, encAlg)[0]
+                                      localMu, encAlg)[0]
             if (time.time() - lastWrite >= dtComm):
                 #Check for each motor if the current move is allowed 
                 #within the joint limits
@@ -333,7 +332,6 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
         localMu.write(f"{['0|0'] * SPData.lenData}\n".encode(encAlg))
         time.sleep(dtComm)
         localMu.__del__()
-        homeObj.CleanPins()
         print("Quitting...")
         return
     print("This should never happen!")
@@ -503,7 +501,7 @@ def DThetaToComm(SPData: SerialData, dtheta: "np.ndarray[float]") \
 
 def PegasusEFControl(SPData: SerialData, pegasus: Robot, 
                      localMu: serial.Serial, dtComm: float, dtPrint: float, 
-                     dtInput: float, homeObj: Homing, encAlg: str = 'utf-8', 
+                     dtInput: float, encAlg: str = 'utf-8', 
                      holdStill: bool = False, kP: "np.ndarray[float]"=0, 
                      kI: "np.ndarray[float]"=0, kD: "np.ndarray[float]"=0, 
                      ILim=[100,100,100,100,100]):
@@ -591,7 +589,7 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
     try:
         while True: #Main loop
                 lastCheck = SReadAndParse(SPData, lastCheck, dtComm, 
-                                        localMu, homeObj, encAlg)[0]
+                                        localMu, encAlg)[0]
                 if (time.time() - lastWrite >= dtComm):
                     #Check for each motor if the current move is allowed 
                     #within the joint limits
@@ -651,7 +649,6 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
         localMu.write(f"{['0|0'] * SPData.lenData}\n".encode(encAlg))
         time.sleep(dtComm)
         localMu.__del__()
-        homeObj.CleanPins()
         print("Quitting...")
     
 def PegasusManualControl(method="joints"):
@@ -729,7 +726,6 @@ def PegasusManualControl(method="joints"):
     encAlg = "utf-8"
     ### END OF SERIAL COMMUNICATION SETUP ###
     homingPins = [7,11,13,15,29,31]
-    homeObj = Homing(homingPins)
     holdStill = False
     kP = float(input("kP: "))*np.eye(len(Pegasus.joints))
     kI = float(input("kI: "))*np.eye(len(Pegasus.joints))
@@ -738,11 +734,11 @@ def PegasusManualControl(method="joints"):
     ILim = [kI[0,0]*10/dtInput for i in range(len(Pegasus.joints))] 
     if method == 'joint':
         PegasusJointControl(Pegasus, SPData, localMu, dtComm, dtPrint,
-                            dtInput, homeObj, encAlg, holdStill, kP, kI, kD, 
+                            dtInput, encAlg, holdStill, kP, kI, kD, 
                             ILim) 
     elif method == 'end-effector':
         PegasusEFControl(SPData, Pegasus, localMu, dtComm, dtPrint, dtInput, 
-                         homeObj, encAlg, holdStill, kP, kI, kD)
+                         encAlg, holdStill, kP, kI, kD)
     
     return
 

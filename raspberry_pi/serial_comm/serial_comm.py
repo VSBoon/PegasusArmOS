@@ -91,7 +91,7 @@ def GetComms(localMu: serial.Serial, encAlg: str = "utf-8") -> str:
     return dataIn
 
 def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
-                  localMu: serial.Serial, homeObj: Homing, encAlg: str = "utf-8") \
+                  localMu: serial.Serial, encAlg: str = "utf-8") \
                   -> Tuple[float, bool]:
     """Serial read function which parses data into SerialData object.
     :param SPData: SerialData instance, stores & parses serial data.
@@ -149,7 +149,7 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
             #Expected form dataPacket[i]: "totCount|rotDir"
             #Or "totCount|rotDir|currentVal|homingBool"
             #Extract both variables, put into SPData object.
-            SPData.ExtractVars(dataPacket, homeObj)
+            SPData.ExtractVars(dataPacket)
     else:
         return lastCheckOld, controlBool
     return lastCheck, controlBool
@@ -266,8 +266,6 @@ if __name__ == "__main__":
     encAlg = "utf-8"
     print("Starting serial communication. \nType Ctrl+C to stop")
     ## END OF SERIAL COMMUNICATION SETUP ###
-    homingPins = [3, 5, 7, 29, 31, 26]
-    homeObj = Homing(homingPins)
 
     try:
         lastCheck = time.time()
@@ -275,7 +273,7 @@ if __name__ == "__main__":
             #SReadAndParse has an internal dt clock
             lastCheck, controlBool = SReadAndParse(SPData, lastCheck, 
                                                    dtComm, localMu, 
-                                                   homeObj, encAlg)
+                                                   encAlg)
             if controlBool and (time.time() - lastCheck >= dtComm):
                 commFault = SPData.CheckCommFault()
                 SPData.GetDir()
@@ -300,5 +298,4 @@ if __name__ == "__main__":
         localMu.write(f"{['0|0|0'] * lenData}\n".encode(encAlg))
         time.sleep(dtComm)
         localMu.__del__()
-        homeObj.CleanPins()
         print("Ctrl+C pressed, quitting...")
