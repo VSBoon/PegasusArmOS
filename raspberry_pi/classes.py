@@ -28,7 +28,7 @@ class Link():
             self.Tii: np.ndarray = np.dot(mr.TransInv(prevLink.Tsi), Tsi)
 
     def __repr__(self):
-        return f"Link(Gi: {self.Gi}\nJoints: {self.joints}\nTsi: {self.Tsi})"
+        return f"Link(Gi: {self.Gi}\nTii:{self.Tii}\nTsi: {self.Tsi})"
 
 class Joint():
     """A storage class combining all the information relevant to joint
