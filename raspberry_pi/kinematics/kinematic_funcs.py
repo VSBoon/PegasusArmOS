@@ -59,7 +59,7 @@ def FKSpace(TsbHome: np.ndarray, spaceScrews: List[np.ndarray],
 
 def IKSpace(TsbHome: np.ndarray, TsbTarget: np.ndarray, spaceScrews: 
             List[np.ndarray], jointLimits: List[List[float]], nGuessJoints: 
-            int=2, eRad: int=2e-2, eLin: int=2e-2) -> Tuple[np.ndarray, bool]:
+            int=2, eRad: float=2e-2, eLin: float=2e-2) -> Tuple[np.ndarray, bool]:
     """Iteratively computes the list of joint angles of a robot that 
     result in the desired end-effector configuration. If multiple 
     solutions exist, it will return the solution with the smallest
