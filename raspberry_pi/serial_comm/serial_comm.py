@@ -95,13 +95,13 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
                   -> Tuple[float, bool]:
     """Serial read function which parses data into SerialData object.
     :param SPData: SerialData instance, stores & parses serial data.
-    :param lastCheckOld: time.time() value representing last time 
+    :param lastCheckOld: time.perf_counter() value representing last time 
                          data was parsed.
     :param dtComm: Desired minimal time between communication loops.
     :param localMu: serial.Serial() instance representing the serial
                     communication with the local microcontroller.
     :param encAlg: Algorithm used to encode data into bytes for serial.
-    :return lastCheck: time.time() value representing last time
+    :return lastCheck: time.perf_counter() value representing last time
                        data was parsed.
     :return controlBool: Boolean indicating if control can be done on 
                          new data.
@@ -117,14 +117,14 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
     dtComm = 0.005
     localMu = StartComms("COM9", baudRate)
     encAlg = "utf-8"
-    lastCheckOld = time.time()
+    lastCheckOld = time.perf_counter()
 
     Example output:
     1634299822.1247501, True
     """
     controlBool = True
-    lastCheck = time.time()
-    elapsedTime = time.time() - lastCheckOld
+    lastCheck = time.perf_counter()
+    elapsedTime = time.perf_counter() - lastCheckOld
     if elapsedTime >= dtComm:
         if localMu.inWaiting() == 0:
             return lastCheck, controlBool
@@ -268,13 +268,13 @@ if __name__ == "__main__":
     ## END OF SERIAL COMMUNICATION SETUP ###
 
     try:
-        lastCheck = time.time()
+        lastCheck = time.perf_counter()
         while True:
             #SReadAndParse has an internal dt clock
             lastCheck, controlBool = SReadAndParse(SPData, lastCheck, 
                                                    dtComm, localMu, 
                                                    encAlg)
-            if controlBool and (time.time() - lastCheck >= dtComm):
+            if controlBool and (time.perf_counter() - lastCheck >= dtComm):
                 commFault = SPData.CheckCommFault()
                 SPData.GetDir()
                 success = SPData.CheckTolAng()
