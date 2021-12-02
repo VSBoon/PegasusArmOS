@@ -143,7 +143,7 @@ def TrajGen(robot: Robot, startConfig: Union[np.ndarray, List[float]], endConfig
             thetaMaxPos = max(np.subtract(endConfig, startConfig))
             thetaMaxNeg = min(np.subtract(endConfig, startConfig))
             thetaMax = max(abs(thetaMaxNeg), thetaMaxPos)
-            tTot = thetaMax / omgMax
+            tTot = 1.5*(thetaMax / omgMax) #Scaling factor might require tweaking
             nSubConfigs = int(tTot/dt + 2)
             traj = JointTrajLims(startConfig, 
             endConfig, robot.limList, tTot, nSubConfigs, timeScaling)
@@ -160,7 +160,7 @@ def TrajGen(robot: Robot, startConfig: Union[np.ndarray, List[float]], endConfig
             pStart = startConfig[0:3,3]
             pEnd = endConfig[0:3,3]
             distTot = np.linalg.norm(pStart-pEnd)
-            tTot = distTot/vMax
+            tTot = 1.5*(distTot/vMax) #Scaling factor might require tweaking
             nSubConfigs = int(tTot/dt)
             if method == "screw" or method == "Screw":
                 traj = np.array(mr.ScrewTrajectory(startConfig, endConfig, tTot, 
