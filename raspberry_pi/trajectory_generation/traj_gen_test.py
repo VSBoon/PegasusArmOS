@@ -183,21 +183,25 @@ def test_TrajGenJointNotList():
 def test_TrajDerJoint():
     traj = TrajGen(robot, sConfigJoint, fConfigJoint, vMax, omgMax, dt, 'joint')
     trajTheta, trajV, trajA = TrajDerivatives(traj, 'joint', robot, dt)
-    assert trajTheta.all() == traj.all()
-    assert trajV[-1].all() == ((trajTheta[-1] - trajTheta[-2])/dt).all()
-    assert trajA[-1].all() == ((trajV[-1] - trajTheta[-2])/dt).all()
+    assert np.all(trajTheta == traj)
+    assert np.all(trajV[-2] == ((trajTheta[-1] - trajTheta[-2])/dt))
+    assert np.all(trajA[-2] == ((trajV[-1] - trajV[-2])/dt))
+    assert np.all(trajV[-1] == np.zeros(trajV.shape[1]))
+    assert np.all(trajA[-1] == np.zeros(trajA.shape[1]))
 
 def test_TrajDerScrew():
     traj = TrajGen(robot, sConfigOther, fConfigOther, vMax, omgMax, dt, 'screw')
     trajTheta, trajV, trajA = TrajDerivatives(traj, 'screw', robot, dt)
-    assert np.allclose(trajV[-1], ((trajTheta[-1] - trajTheta[-2])/dt))
-    assert np.allclose(trajA[-1], ((trajV[-1] - trajV[-2])/dt))
+    assert np.allclose(trajV[-2], ((trajTheta[-1] - trajTheta[-2])/dt))
+    assert np.allclose(trajA[-2], ((trajV[-1] - trajV[-2])/dt))
+    assert np.all(trajV[-1] == np.zeros(trajV.shape[1]))
+    assert np.all(trajA[-1] == np.zeros(trajA.shape[1]))
 
 def test_TrajDerCart():
     traj = TrajGen(robot, sConfigOther, fConfigOther, vMax, omgMax, dt, 'cartesian')
     trajTheta, trajV, trajA = TrajDerivatives(traj, 'cartesian', robot, dt)
-    assert np.allclose(trajV[-1], ((trajTheta[-1] - trajTheta[-2])/dt))
-    assert np.allclose(trajA[-1], ((trajV[-1] - trajV[-2])/dt))
+    assert np.allclose(trajV[-2], ((trajTheta[-1] - trajTheta[-2])/dt))
+    assert np.allclose(trajA[-2], ((trajV[-1] - trajV[-2])/dt))
 
 def test_TrajDerIKUnreachable():
     fConfigOther = np.array([[1,0,0,10],

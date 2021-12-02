@@ -10,6 +10,7 @@ from classes import Robot, Joint, Link, DimensionError, IKAlgorithmError
 from kinematics.kinematic_funcs import IKSpace
 import modern_robotics as mr
 import numpy as np
+import matplotlib.pyplot as plt
 from typing import Union, List, Tuple
 
 def JointTrajLims(thetaStart: Union[List, np.ndarray], thetaEnd: 
@@ -215,8 +216,8 @@ def TrajDerivatives(traj: Union[List[np.ndarray], List[List[float]]],
     1.00007319e+02]...]
     """
     trajTheta = np.zeros((len(traj),len(robot.joints)))
-    trajVel = trajTheta.copy()
-    trajAcc = trajTheta.copy()
+    trajVel = np.zeros((len(traj),len(robot.joints)))
+    trajAcc = np.zeros((len(traj),len(robot.joints)))
     if method != "joint" and method != "Joint":
         # robot.TllList[-1] = TsbHome, the end-effector frame described in
         # the space frame at the home configuration of the robot.
@@ -233,9 +234,9 @@ def TrajDerivatives(traj: Union[List[np.ndarray], List[List[float]]],
     else:
         trajTheta = traj
     #Discrete differentiation
-    for i in range(len(trajTheta)):
-        trajVel[i] = (trajTheta[i] - trajTheta[i-1])/dt
-        trajAcc[i] = (trajVel[i] - trajVel[i-1])/dt 
+    for i in range(len(trajTheta)-1):
+        trajVel[i] = (trajTheta[i+1] - trajTheta[i])/dt
+        trajAcc[i] = (trajVel[i+1] - trajVel[i])/dt 
     return trajTheta, trajVel, trajAcc
 
 if __name__ == "__main__":
@@ -300,19 +301,18 @@ if __name__ == "__main__":
     endConfig = [0.2*np.pi for i in range(len(startConfig))]
     vMax = 0.2
     omgMax = 0.25*np.pi
-    dt = 0.2
+    dt = 0.01
     method = 'joint'
     timeScaling = 5
     traj = TrajGen(Pegasus, startConfig, endConfig, vMax, omgMax, dt, method="joint")
     trajTheta, trajVel, trajAcc = TrajDerivatives(traj, robot=Pegasus, method="joint", dt=0.1)
-    print(trajTheta)
-    print(trajVel)
-    print(trajAcc)
-
+    valList = trajTheta[:,0]
+    timeList = [dt*n for n in range(trajTheta[:,0].size)]
+    plt.plot(timeList, valList)
+    plt.show()
     thetaStart = np.array([0,0,0,0,0])
     thetaEnd = np.array([np.pi, -0.8*np.pi, 0.5*np.pi, 0.7*np.pi, 0.4*np.pi])
     lims = [[-0.1*np.pi, -0.7*np.pi] for i in range(len(thetaStart))]
     Tf = 5
     N = 4
     method = 5
-    print(JointTrajLims(thetaStart, thetaEnd, lims, Tf, N, method))
