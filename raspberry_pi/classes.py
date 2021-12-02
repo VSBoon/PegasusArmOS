@@ -162,11 +162,27 @@ class SerialData():
             self.totCount[i] = int(self.totCount[i])
             self.rotDirCurr[i] = int(self.rotDirCurr[i])
             self.prevAngle[i] = self.currAngle[i]
+            #TODO: CHECK!!!
             if i == self.lenData-1:
                     #Gripper doesn't have an 'angle'
                     self.currAngle[i] = self.totCount[i]
+            elif i == 3: #Diff drive 'difference' part, up & down:
+                """Although the gears at the diff drive move in the
+                same direction when going up / down, the motors are 
+                placed in a mirrored fashion such that their 
+                rotational shafts turn oppositely."""
+                angleM4 = self.totCount[3]*self.joints[3].enc2Theta
+                angleM5 = self.totCount[4]*self.joints[4].enc2Theta
+                average = (angleM5 + angleM4)/2
+                self.currAngle[i] = angleM4 - average
+            elif i == 4: #Diff drive 'synchronous' part;
+                """A similar argument as for the fourth axis is made."""
+                angleM4 = self.totCount[3]*self.joints[3].enc2Theta
+                angleM5 = self.totCount[4]*self.joints[4].enc2Theta
+                self.currAngle[i] = (angleM4 + angleM5)/2
             else:
-                self.currAngle[i] = self.totCount[i] * self.joints[i].enc2Theta
+                self.currAngle[i] = self.totCount[i] *\
+                                    self.joints[i].enc2Theta
             if i == 2 or i == 3:
                 """Due to the unique mechanics of the robot, the 
                 encoder only measures the absolute angle of these joints,
@@ -174,9 +190,6 @@ class SerialData():
                 """
                 self.currAngle[i] -= self.totCount[i-1]*\
                                      self.joints[i-1].enc2Theta
-            elif i == 4:
-                    self.currAngle[i] -= self.totCount[i-2]*\
-                                         self.joints[i-2].enc2Theta
 
     def Dtheta2Mspeed(self, dtheta: "np.ndarray[float]", 
                       dthetaMax: List[float], PWMMin: int, PWMMax: int):
