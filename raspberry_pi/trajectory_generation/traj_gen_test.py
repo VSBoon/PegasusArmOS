@@ -8,7 +8,7 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 import numpy as np
-from traj_gen import TrajGen, TrajDerivatives
+from traj_gen import TrajGen, TrajDerivatives, JointTrajLims
 from classes import Link, Joint, Robot, IKAlgorithmError
 ###ROBOT INITIALISATION###
 #Inertia matrices
@@ -87,35 +87,78 @@ omgMax = 0.5
 vMax = 0.5
 dt = 0.01
 
+def test_TrajLimsShort():
+    thetaStart = [0,0,0,0,0]
+    thetaEnd = [0.4*np.pi, 0.5*np.pi, -0.5*np.pi, 0.2*np.pi, -0.45*np.pi]
+    lims = [[-0.6*np.pi, 0.6*np.pi] for i in range(5)]
+    Tf = 10
+    N = 10
+    method = 5
+    traj = JointTrajLims(thetaStart, thetaEnd, lims, Tf, N , method)
+    assert np.all(traj[-1,:] == np.array(thetaEnd))
 
+def test_TrajLimsLong():
+    lims = [[-(1/4)*np.pi, (5/4)*np.pi] for i in range(5)]
+    thetaStart = [-0.1*np.pi, -0.05*np.pi, 0, -0.95*np.pi, 1.05*np.pi]
+    thetaEnd = [1.05*np.pi, 1*np.pi, 1.05*np.pi, 1.9*np.pi, -0.1*np.pi]
+    Tf = 10
+    N = 10
+    method = 5
+    traj = JointTrajLims(thetaStart, thetaEnd, lims, Tf, N , method)
+    assert np.all(traj[:,-1] == traj[:,-2])
+    assert traj[5,0] > 0 #Go through long route, in this case positive
+    assert traj[5,1] > 0
+    assert traj[5,2] > 0
+
+def test_TrajLimsErr():
+    lims = [[0, np.pi] for i in range(5)]
+    thetaStart = [0,0,0,0,0]
+    thetaEnd = [0.5*np.pi for i in range(5)]
+    Tf = 10
+    N = 10
+    method = 5
+    try:
+        traj = JointTrajLims(thetaStart, thetaEnd, lims, Tf, N , method)
+    except ValueError:
+        assert True
+
+def test_TrajLimsNoLims():
+    lims = [[0, 0] for i in range(5)]
+    thetaStart = np.random.rand(5)
+    thetaEnd = np.random.rand(5)
+    Tf = 10
+    N = 10
+    method = 5
+    traj = JointTrajLims(thetaStart, thetaEnd, lims, Tf, N , method)
+    assert True #No ValueError
+
+#Tested, do not let it get in the way of other tests
+robot.limList = [[0,0] for i in range(len(robot.limList))]
 
 def test_TrajGenScrewNormal():
-    trajList, timeList = TrajGen(sConfigOther, fConfigOther, omgMax, 
+    trajList= TrajGen(robot, sConfigOther, fConfigOther, omgMax, 
     vMax, dt, method='screw')
     assert isinstance(trajList[0], np.ndarray)
-    assert isinstance(timeList[0], float)
     assert (trajList[0] == sConfigOther).all()
     assert (trajList[-1] == fConfigOther).all()
 
 def test_TrajGenCartNormal():
-    trajList, timeList = TrajGen(sConfigOther, fConfigOther, omgMax, 
+    trajList = TrajGen(robot, sConfigOther, fConfigOther, omgMax, 
     vMax, dt, method='cartesian')
     assert isinstance(trajList[0], np.ndarray)
-    assert isinstance(timeList[0], float)
     assert (trajList[0] == sConfigOther).all()
     assert (trajList[-1] == fConfigOther).all()
 
 def test_TrajGenJointNormal():
-    trajList, timeList = TrajGen(sConfigJoint, fConfigJoint, omgMax, 
+    trajList = TrajGen(robot, sConfigJoint, fConfigJoint, omgMax, 
     vMax, dt, method='joint')
     assert isinstance(trajList[0], np.ndarray)
-    assert isinstance(timeList[0], float)
     assert (trajList[0] == sConfigJoint).all()
     assert (trajList[-1] == fConfigJoint).all()
 
 def test_TrajGenScrewNotSE3():
     try:
-        trajList, timeList = TrajGen(sConfigOtherNotSE3, fConfigOther, omgMax, 
+        trajList = TrajGen(robot, sConfigOtherNotSE3, fConfigOther, omgMax, 
         vMax, dt, method='cartesian') 
     except SyntaxError as e:
         if "input SE(3)" in e.msg:
@@ -123,7 +166,7 @@ def test_TrajGenScrewNotSE3():
 
 def test_TrajGenCartNotNpArr():
     try:
-        trajList, timeList = TrajGen(sConfigJoint, fConfigOther, omgMax, 
+        trajList = TrajGen(robot, sConfigJoint, fConfigOther, omgMax, 
         vMax, dt, method='cartesian') 
     except SyntaxError as e:
         if "numpy arrays" in e.msg:
@@ -131,27 +174,27 @@ def test_TrajGenCartNotNpArr():
 
 def test_TrajGenJointNotList():
     try:
-        trajList, timeList = TrajGen(sConfigJoint, fConfigOther, vMax, 
+        trajList = TrajGen(robot, sConfigJoint, fConfigOther, vMax, 
         omgMax, dt, method='joint', timeScaling=5) 
     except SyntaxError as e:
         if "list of joint angles" in e.msg:
             assert True 
 
 def test_TrajDerJoint():
-    traj, timeList = TrajGen(sConfigJoint, fConfigJoint, vMax, omgMax, dt, 'joint')
+    traj = TrajGen(robot, sConfigJoint, fConfigJoint, vMax, omgMax, dt, 'joint')
     trajTheta, trajV, trajA = TrajDerivatives(traj, 'joint', robot, dt)
     assert trajTheta.all() == traj.all()
     assert trajV[-1].all() == ((trajTheta[-1] - trajTheta[-2])/dt).all()
     assert trajA[-1].all() == ((trajV[-1] - trajTheta[-2])/dt).all()
 
 def test_TrajDerScrew():
-    traj, timeList = TrajGen(sConfigOther, fConfigOther, vMax, omgMax, dt, 'screw')
+    traj = TrajGen(robot, sConfigOther, fConfigOther, vMax, omgMax, dt, 'screw')
     trajTheta, trajV, trajA = TrajDerivatives(traj, 'screw', robot, dt)
     assert np.allclose(trajV[-1], ((trajTheta[-1] - trajTheta[-2])/dt))
     assert np.allclose(trajA[-1], ((trajV[-1] - trajV[-2])/dt))
 
 def test_TrajDerCart():
-    traj, timeList = TrajGen(sConfigOther, fConfigOther, vMax, omgMax, dt, 'cartesian')
+    traj = TrajGen(robot, sConfigOther, fConfigOther, vMax, omgMax, dt, 'cartesian')
     trajTheta, trajV, trajA = TrajDerivatives(traj, 'cartesian', robot, dt)
     assert np.allclose(trajV[-1], ((trajTheta[-1] - trajTheta[-2])/dt))
     assert np.allclose(trajA[-1], ((trajV[-1] - trajV[-2])/dt))
@@ -161,7 +204,7 @@ def test_TrajDerIKUnreachable():
                              [0,1,0,0],
                              [0,0,1,0],
                              [0,0,0,1]])
-    traj, timeList = TrajGen(sConfigOther, fConfigOther, vMax, omgMax, dt, 'cartesian')
+    traj = TrajGen(robot, sConfigOther, fConfigOther, vMax, omgMax, dt, 'cartesian')
     try:
         trajTheta, trajV, trajA = TrajDerivatives(traj, 'cartesian', robot, dt)
         assert False
