@@ -124,6 +124,8 @@ class SerialData():
         :param joints: List of all Joint instances of the robot.
         :param angleTol: Tolerance of each desired joint angle in 
                          radians.
+        NOTE 02-12-2021: desAngles and angleTol are outdated, 
+        should be removed and code refactored.
         """
         self.lenData = lenData
         self.desAngle = desAngles
