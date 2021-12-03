@@ -65,6 +65,38 @@ def screwsToMatT(screwsT: List[np.ndarray]) -> np.ndarray:
         screwMat = np.hstack((screwMat, screwsT[i].T))
     return screwMat
 
+def RToEuler(R: np.ndarray):
+    """Calculates one solution of Euler angles related to a SO(3)
+    rotation matrix.
+    :param R: An SO(3) rotation matrix.
+    :return eulerAngles: Array of Euler angles satisfying R.
+    NOTE: A second set of Euler angles satisfying R can often be found 
+    by setting thetaX2 = np.pi - thetaX and solving the rest of the 
+    algorithm accordingly with thetaX2. 
+    
+    Example input: 
+    R = np.array([[0,0,1],[0,-1,0],[1,0,0]])
+    Output:
+    [-1.57079633  3.14159265  0.        ]
+
+    NOTE: Credits to Gregory G. Slabaugh of Queen Mary University of 
+    London for writing the pseudo-code for this function."""
+    if abs(R[2,0]) != 1:
+        thetaX = -np.arcsin(R[2,0])
+        thetaY = np.arctan2(R[2,0]/np.cos(thetaX), R[2,2]/np.cos(thetaX))
+        thetaZ = np.arctan2(R[1,0]/np.cos(thetaX), R[0,0]/np.cos(thetaX))
+    else:
+        thetaZ = 0
+        if R[2,0] == -1:
+            thetaX = np.pi/2
+            thetaY = np.arctan2(R[0,1], R[0,2])
+        else:
+            thetaX = -np.pi/2
+            thetaY = np.arctan2(-R[0,1], -R[0,2])
+    return np.array([thetaX, thetaY, thetaZ])
+
+
+
 def ThetaInitGuess(psbHome: np.ndarray, psbTarget: np.ndarray, majorScrewJoints: 
                    List[np.ndarray], jointLimits: List[List[float]]) -> float:
     """Computes the initial angle gues of an inverse-kinematics 
