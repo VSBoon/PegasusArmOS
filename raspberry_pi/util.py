@@ -1,4 +1,5 @@
 import numpy as np
+import modern_robotics as mr
 from typing import List
     
 def screwsToMat(screws: List[np.ndarray]) -> np.ndarray:
@@ -82,20 +83,51 @@ def RToEuler(R: np.ndarray):
     NOTE: Credits to Gregory G. Slabaugh of Queen Mary University of 
     London for writing the pseudo-code for this function."""
     if abs(R[2,0]) != 1:
-        thetaX = -np.arcsin(R[2,0])
-        thetaY = np.arctan2(R[2,0]/np.cos(thetaX), R[2,2]/np.cos(thetaX))
-        thetaZ = np.arctan2(R[1,0]/np.cos(thetaX), R[0,0]/np.cos(thetaX))
+        thetaY = -np.arcsin(R[2,0])
+        thetaX = np.arctan2(R[2,0]/np.cos(thetaY), R[2,2]/np.cos(thetaY))
+        thetaZ = np.arctan2(R[1,0]/np.cos(thetaY), R[0,0]/np.cos(thetaY))
     else:
         thetaZ = 0
         if R[2,0] == -1:
-            thetaX = np.pi/2
-            thetaY = np.arctan2(R[0,1], R[0,2])
+            thetaY = np.pi/2
+            thetaX = thetaZ + np.arctan2(R[0,1], R[0,2])
         else:
             thetaX = -np.pi/2
-            thetaY = np.arctan2(-R[0,1], -R[0,2])
+            thetaY = -thetaZ + np.arctan2(-R[0,1], -R[0,2])
+        #Normalize angles
+        thetaX = np.mod(thetaX,2*np.pi)
+        thetaY = np.mod(thetaY,2*np.pi)
+        thetaZ = np.mod(thetaZ,2*np.pi)
     return np.array([thetaX, thetaY, thetaZ])
 
-
+def EulerToR(angles: List[float]):
+    """Calculates the SO(3) rotation matrix given a set of Euler 
+    angles.
+    :param angles: List of three Euler angles around the x-, y-, and z-
+    axis respectively.
+    
+    Example input:
+    angles = [-1.57079633  3.14159265  0.        ]
+    Output:
+    
+    NOTE: Credits to Gregory G. Slabaugh of Queen Mary University of 
+    London for writing the equations online for this function """
+    x = angles[0]
+    y = angles[1]
+    z = angles[2]
+    Rx = np.array([[1, 0        , 0         ],
+                   [0, np.cos(x), -np.sin(x)],
+                   [0, np.sin(x), np.cos(x) ]])
+    Ry = np.array([[np.cos(y),  0,  np.sin(y)],
+                   [0,          1,  0        ],
+                   [-np.sin(y), 0, np.cos(y)]])
+    Rz = np.array([[np.cos(z), -np.sin(z), 0],
+                   [np.sin(z),  np.cos(z), 0],
+                   [0,          0,         1]])
+    R = np.dot(np.dot(Rz, Ry), Rx)
+    if not mr.TestIfSO3(R):
+        raise SyntaxError("Computed R is not SO(3).")
+    return np.round(R, 8)
 
 def ThetaInitGuess(psbHome: np.ndarray, psbTarget: np.ndarray, majorScrewJoints: 
                    List[np.ndarray], jointLimits: List[List[float]]) -> float:
