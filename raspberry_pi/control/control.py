@@ -94,4 +94,23 @@ def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List
     print("Finished trajectory!")
     return None
     
+def Grip(gripping: bool, serial: SerialData):
+    """Assumption: Closing --> positive encoder count, 
+                   Opening --> negative encoder count.
+    TODO: Validate assumption"""
+    fullCloseCount = 1000 #TODO: Find proper value!
+    fullOpenCount = 0
+    closingPWM = 40 #TODO: Find proper value
+    if gripping:
+        if serial.totCount[-1] < fullCloseCount:
+            """If there is an object that prevents the gripper
+            from fully closing, closingPWM will force is exerted on 
+            the object."""
+            serial.mSpeed[-1] = closingPWM
+        else:
+            serial.mSpeed[-1] = 0
+    elif serial.totCount[-1] > fullOpenCount:
+        serial.mSpeed[-1] = -closingPWM
+    else:
+        serial.mSpeed[-1] = 0
 
