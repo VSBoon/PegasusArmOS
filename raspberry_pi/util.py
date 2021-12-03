@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Tuple
+from typing import List
     
 def screwsToMat(screws: List[np.ndarray]) -> np.ndarray:
     """Translates list of screw axes into a matrix desired by the 
@@ -186,56 +186,3 @@ def Curr2MSpeed(currMotor: float) -> float:
     linFactor = 255/2 #TODO: FIND ACCURATE LINFACTOR!
     mSpeed = currMotor *linFactor
     return mSpeed
-
-def PID(ref: "np.ndarray[float]", Fdb: "np.ndarray[float]",
-        kP: "np.ndarray[float]", kI: "np.ndarray[float]", 
-        kD: "np.ndarray[float]", termI: "np.ndarray[float]", 
-        ILim: "np.ndarray[float]", dt: float, errPrev: 
-        "np.ndarray[float]") -> Tuple["np.ndarray[float]"]:
-        """Computes discrete PID error control given a reference 
-        signal, a feedback signal, and PID constants.
-        :param ref: Reference / Feed-forward signal.
-        :param Fdb: Feedback signal.
-        :param kP: nxn proportional matrix, typically an identity
-                   matrix times a constant.
-        :param kI: nxn integral matrix, typically an identity matrix
-                   times a constant.
-        :param kD: nxn difference matrix, typically an identity matrix
-                   times a constant.
-        NOTE: To omit P-, I-, or D action, input kX = 0
-        :param termI: Accumulative integral term.
-        :param ILim: Integral term limiter for anti-integral windup.
-        :param dt: Time between each error calculation in seconds.
-        :param errPrev: error value from the previous PID control loop.
-        :return refWPID: Reference signal added with the PID signal.
-        :return termI: The new accumulative integral term.
-        :return err: The new error calculation.
-        
-        Example input:
-        ref = [0, 1, 2, 3, 4]
-        Fdb = [0, 1.1, 1.9, 3.5, 4]
-        kP = 1*np.eye(5)
-        kI = 0.1*np.eye(5)
-        kD = 0.01*np.eye(5)
-        termI = [0,0,0,0,0]
-        ILim = [5,5,5,5,5]
-        dt = 0.01
-        errPrev = [0,0,0,0,0]
-
-        Output:
-        ([0.  0.7 2.3 1.5 4. ],
-        [0. 0. 0. 0. 0. ],
-        [ 0.  -0.1  0.1 -0.5  0. ])
-        """
-        err = np.array([ref[i] - Fdb[i] for i in range(ref.size)])
-        termP = np.dot(kP, err)
-        for i in range(err.size):
-            if abs(termI[i]) >= ILim[i]:
-                termI[i] = np.sign(termI[i])*ILim[i]
-
-        else: #Trapezoidal integration
-            trpz = dt*(np.add(errPrev, err))/2
-            np.add(termI, np.dot(kI, trpz), out=termI, casting="unsafe")
-        termD = np.dot(kD, (np.subtract(err, errPrev)/dt))
-        PID = np.add(np.add(termP, termI), termD)
-        return PID, termI, err

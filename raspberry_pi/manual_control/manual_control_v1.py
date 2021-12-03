@@ -8,9 +8,9 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 print("Importing local modules...")
-from classes import InputError, SerialData, Joint, Link, Robot
+from classes import InputError, SerialData, Robot, PID
 from robot_init import robot as Pegasus
-from util import PID, Tau2Curr, Curr2MSpeed
+from util import Tau2Curr, Curr2MSpeed
 from serial_comm.serial_comm import SReadAndParse, FindSerial, StartComms
 from kinematics.kinematic_funcs import IKSpace
 from dynamics.dynamics_funcs import FeedForward
@@ -25,36 +25,23 @@ import pygame
 np.set_printoptions(formatter={'float': lambda x: "{0:0.3f}".format(x)})
 
 def HoldPos(pos: Union["np.ndarray[float]", List], pegasus: Robot, 
-            SPData: SerialData, kP: "np.ndarray[float]", 
-            kI: "np.ndarray[float]", kD: "np.ndarray[float]", 
-            termI: "np.ndarray[float]", ILim: "np.ndarray[float]", dt: float, 
-            errPrev: "np.ndarray[float]") -> Tuple[List, "np.ndarray[float]"]:
+            SPData: SerialData, PIDObj: PID, dt: float) -> List:
     """Hold a given position using feed forward and PID control.
     :param pos: Desired configuration to hold, either as a list of 
                 joint angles or the SE(3) end-effector configuration.
     :param pegasus: Robot object representing the arm.
     :param SPData: SerialData object for communication and keeping 
                    joint angles etc.
-    :param kP: nxn proportional matrix, typically an identity
-               matrix times a constant.
-    :param kI: nxn integral matrix, typically an identity matrix
-               times a constant.
-    :param kD: nxn difference matrix, typically an identity matrix
-               times a constant.
-    NOTE: To omit P-, I-, or D action, input kX = 0
-    :param termI: Accumulative integral term.
-    :param ILim: Integral term limiter for anti-integral windup.
+    :param PIDObj: PID-class for storing PID data & executing loops.
     :param dt: Time between each error calculation in seconds.
     :param errPrev: error value from the previous PID control loop.
     :return mSpeed: List of PWM motor speeds, in the range [0, 255].
     NOTE: mSpeed should be remapped to [mSpeedMin, mSpeedMax].
-    :return termI: New accumulative intergral term.
-    :return err: Angle error of the current loop.
     """
     #Translate pos into joint space
     if type(pos) == list:
         pos = np.array(pos)
-    elif pos.size == errPrev.size:
+    elif pos.size == PIDObj.errPrev.size:
         pass
     elif pos.shape == (4,4): #Transformation matrix
         isSE3 = mr.TestIfSE3(pos)
@@ -76,15 +63,14 @@ def HoldPos(pos: Union["np.ndarray[float]", List], pegasus: Robot,
     explicitely by multiplying kP, kI, and kD with the mass matrix, 
     but since the mass matrix is questionable in this case, we omit it.
     """
-    PIDT, termI, err = PID(pos, np.array(SPData.currAngle), kP, kI, kD, 
-                           termI, ILim, dt, errPrev)
+    PIDT = PIDObj.Execute(pos, np.array(SPData.currAngle), dt)
     FFwPID = np.add(feedForwardT, PIDT)
     current = [Tau2Curr(FFwPID[i], pegasus.joints[i].gearRatio, 
               pegasus.joints[i].km, 2) for i in range(FFwPID.size)]
     
     mSpeed = [Curr2MSpeed(current[i]) for i in range(FFwPID.size)]
     print(f"PID+FF\n{FFwPID}\ncurr\n{current}\nmSpeed\n{mSpeed}") #Debug
-    return mSpeed, termI, err
+    return mSpeed
 
 def SpeedUpJ(SPData: SerialData, nJoint: int, rotDir: int, mSpeed: int):
     """Sets motor speed for a given joint.
@@ -232,10 +218,8 @@ def CheckKeysJoint(SPData: SerialData, pressed: Dict[str, bool],
 
 def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu: 
                         serial.Serial, dtComm: float, dtPrint: float, 
-                        dtInput: float, encAlg: 
-                        str = 'utf-8', holdStill: bool = False, kP: 
-                        "np.ndarray[float]"=0, kI: "np.ndarray[float]"=0, 
-                        kD: "np.ndarray[float]"=0, ILim=[100,100,100,100,100]):
+                        dtInput: float, PIDObj: PID, encAlg: 
+                        str = 'utf-8', holdStill: bool = False):
     """Allows one to move each joint of the Pegasus arm independantly.
     :param SPData: SerialData object for communication.
     :param localMu: Serial object to connect to local microcontroller.
@@ -244,17 +228,11 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
     :param dtInput: Interval of checking for user inputs in seconds.
     :param dtPrint: Interval between printing robot data on the 
                     terminal in seconds.
+    :param PIDObj: PID class for storage & execution of PID-related 
+                   computations.
     :param encAlg: Encoding algorithm for serial communication.
     :param holdStill: Indicates if position should be actively held if 
                       the arm is not moved.
-    :param kP: nxn proportional matrix, typically an identity
-                   matrix times a constant.
-    :param kI: nxn integral matrix, typically an identity matrix
-                times a constant.
-    :param kD: nxn difference matrix, typically an identity matrix
-                times a constant.
-    NOTE: To omit P-, I-, or D action, input kX = 0
-    :param ILim: Integral term limiter for anti-integral windup.
     """
 
     #Set speeds based on user input
@@ -313,12 +291,13 @@ def PegasusJointControl(pegasus: Robot, SPData: SerialData, localMu:
                     if noInput and not any(list(pressed.values())):
                         if noInput != noInputPrev: #Initialize PID
                             pos = np.array(SPData.currAngle[:-1]) #excl. gripper!
-                            err = np.array([0 for i in range(len(pegasus.joints))])
-                            termI = np.array([0 for i in 
-                                              range(len(pegasus.joints))])
+                            PIDObj.errPrev = np.array([0 for val in 
+                                                      PIDObj.errPrev])
+                            PIDObj.termI = np.array([0 for val in  
+                                                    PIDObj.errPrev])
                         #Note: Gripper not included in HoldPos!
-                        mSpeed, termI, err = HoldPos(pos, pegasus, 
-                        SPData, kP, kI, kD, termI, ILim, dtComm, err)
+                        mSpeed = HoldPos(pos, pegasus, 
+                        SPData, PIDObj, dtComm)
                         for i in range(SPData.lenData-1): #Remap mSpeed
                             if mSpeed[i] > mSpeedMax:
                                 mSpeed[i] = mSpeedMax
@@ -502,10 +481,8 @@ def DThetaToComm(SPData: SerialData, dtheta: "np.ndarray[float]") \
 
 def PegasusEFControl(SPData: SerialData, pegasus: Robot, 
                      localMu: serial.Serial, dtComm: float, dtPrint: float, 
-                     dtInput: float, encAlg: str = 'utf-8', 
-                     holdStill: bool = False, kP: "np.ndarray[float]"=0, 
-                     kI: "np.ndarray[float]"=0, kD: "np.ndarray[float]"=0, 
-                     ILim=[100,100,100,100,100]):
+                     dtInput: float, PIDObj: PID, encAlg: str = 'utf-8', 
+                     holdStill: bool = False):
     """Allows one to control the Pegasus robot arm in end-effector space.
     :param :"""
     #Absolute maximum and minimum linear- & rotational speeds in SI.
@@ -619,10 +596,13 @@ def PegasusEFControl(SPData: SerialData, pegasus: Robot,
                             #Note: Gripper not included in HoldPos!
                             if noInput != noInputPrev: #Initialize PID
                                 pos = SPData.currAngle
-                                err = [0 for i in range(len(pegasus.joints))]
-                                termI = [0 for i in range(len(pegasus.joints))]
-                            mSpeed, termI, err = HoldPos(pos, pegasus, 
-                            SPData, kP, kI, kD, termI, ILim, dtComm, err)
+                                PIDObj.errPrev = [0 for val in 
+                                                  PIDObj.errPrev]
+                                PIDObj.termI = [0 for val in 
+                                                PIDObj.termI]
+                            mSpeed = HoldPos(pos, Pegasus, 
+                                             SPData, PIDObj, 
+                                             dtInput)
                             for i in range(SPData.lenData): #Remap mSpeed
                                 if mSpeed[i] > mSpeedMax:
                                     mSpeed[i] = mSpeedMax
@@ -668,20 +648,18 @@ def PegasusManualControl(method="joints"):
     localMu = StartComms(port, baudRate)
     encAlg = "utf-8"
     ### END OF SERIAL COMMUNICATION SETUP ###
-    homingPins = [7,11,13,15,29,31]
-    holdStill = False
-    kP = float(input("kP: "))*np.eye(len(Pegasus.joints))
-    kI = float(input("kI: "))*np.eye(len(Pegasus.joints))
-    kD = float(input("kD: "))*np.eye(len(Pegasus.joints))
+    kP = float(input("kP: "))
+    kI = float(input("kI: "))
+    kD = float(input("kD: "))
     #10 seconds of unit action:
-    ILim = [kI[0,0]*10/dtInput for i in range(len(Pegasus.joints))] 
+    ILim = [kI*10/dtInput for i in range(len(Pegasus.joints))] 
+    PIDObj = PID(kP, kI, kD, ILim)
     if method == 'joint':
-        PegasusJointControl(Pegasus, SPData, localMu, dtComm, dtPrint,
-                            dtInput, encAlg, holdStill, kP, kI, kD, 
-                            ILim) 
+        PegasusJointControl(Pegasus, SPData, localMu, dtComm, dtPrint, 
+                            dtInput, PIDObj, encAlg, holdStill=False) 
     elif method == 'end-effector':
-        PegasusEFControl(SPData, Pegasus, localMu, dtComm, dtPrint, dtInput, 
-                         encAlg, holdStill, kP, kI, kD)
+        PegasusEFControl(SPData, Pegasus, localMu, dtComm, dtPrint, 
+                         dtInput, encAlg, holdStill=False)
     
     return
 

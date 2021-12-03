@@ -1,6 +1,5 @@
 import numpy as np
 import modern_robotics as mr
-import time
 from typing import List
 
 class Link():
@@ -293,6 +292,61 @@ class SerialData():
             self.mSpeed[i] = mSpeedMax
         elif self.mSpeed[i] < mSpeedMin:
             self.mSpeed[i] = mSpeedMin
+
+class PID():
+    """Data storage class for PID information & execution of PID loops.
+    """
+    def __init__(self, kP: float, kI: float, kD: float, ILim: np.ndarray):
+        """Constructor for PID object.
+        :param kP: Proportional gain term.
+        :param kI: Integral gain term.
+        :param kD: Differential gain term.
+        NOTE: To omit P-, I-, or D action, input kX = 0
+        :param ILim: Limit to integral gain for anti-integral windup.
+        """
+        n = ILim.size
+        self.kP = kP*np.eye(n)
+        self.kI = kI*np.eye(n)
+        self.kD = kD*np.eye(n)
+        self.termI = np.zeros(n)
+        self.ILim = ILim
+        self.errPrev = np.zeros(n)
+
+    def Execute(self, ref: np.ndarray, Fb: np.ndarray, dt: float):
+        """Computes discrete PID error control given a reference 
+        signal, a feedback signal, and PID constants.
+        :param ref: Reference / Feed-forward signal.
+        :param Fdb: Feedback signal.
+        :param dt: Time between each error calculation in seconds.
+        :return PID: PID output.
+        
+        Example input:
+        ref = [0, 1, 2, 3, 4]
+        Fdb = [0, 1.1, 1.9, 3.5, 4]
+        kP = 1*np.eye(5)
+        kI = 0.1*np.eye(5)
+        kD = 0.01*np.eye(5)
+        termI = [0,0,0,0,0]
+        ILim = [5,5,5,5,5]
+        dt = 0.01
+        errPrev = [0,0,0,0,0]
+        Output:
+        [0.  0.7 2.3 1.5 4. ]
+        """
+        err = ref - Fb
+        termP = np.dot(self.kP, err)
+        for i in range(err.size):
+            if abs(self.termI[i]) >= self.ILim[i]:
+                self.termI[i] = np.sign(self.termI[i])*\
+                                  self.ILim[i]
+            else: #Trapezoidal integration
+                trpz = dt*(self.errPrev[i] + err[i])/2
+                self.termI[i] += self.kI[i,i]*trpz
+        termD = np.dot(self.kD, (np.subtract(err, self.errPrev)/dt))
+        PID = np.add(np.add(termP, self.termI), termD)
+        self.errPrev = err
+        return PID
+
 
 ### ERROR CLASSES
 class IKAlgorithmError(BaseException):
