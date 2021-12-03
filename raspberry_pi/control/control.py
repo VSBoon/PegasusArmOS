@@ -18,6 +18,40 @@ from classes import Robot, SerialData, IKAlgorithmError
 from util import PID, Tau2Curr, Curr2MSpeed
 
 def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List], robot: Robot, serial: SerialData, dt: float, vMax: float, omgMax: float, kP: float, kI: float, kD: float, dtComm: float, dtPID: float): #Removed localMu for testing
+    """Position control by means of point-to-point trajectory 
+    generation combined with feed-forward and PID torque control.
+    :param sConfig: Start configuration, either in SE(3) or a list of 
+                    joint angles.
+    :param eConfig: End configuration, either in SE(3) or a list of 
+                    joint angles.
+    :param robot: A Robot object describing the robot mathematically.
+    :param serial: SerialData object for data transmission and 
+                   -storage.
+    :param dt: Time between subconfigurations of the trajectory in [s].
+    :param vMax: Maximum linear velocity of the end-effector.
+    :param omgMax: Maximum rotational velocity of the joints.
+    :param kP: Proportional constant for PID control.
+    :param kI: Integral constant for PID control.
+    :param kD: Derivative constant for PID control.
+    :param dtComm: Interval of sending & receiving data w.r.t the 
+                   local microcontroller in [s].
+    :param dtPID: Time between PID torque updates in [s].
+    
+    Example input:
+    Initialisation of Robot args is omitted for the sake of brevity.
+    robot = Robot(joints, links, TsbHome)
+    serial = SerialData(6, [0,0,0,0,0,0], [1,1,1,1,1,1], [0.1,0.1,0.1,0.1,0.1,0.1], robot.joints)
+    sConfig = serial.currAngle[:-1]
+    eConfig = [0.2,0.2,0.2,0.2,0.2]
+    dt = 0.1
+    vMax = 0.25
+    omgMax = 0.25
+    kP = 1
+    kI = 0.01
+    kD = 0.01
+    dtComm = 0.5
+    dtPID = 0.02
+    """
     print("Checking position inputs...")
     #Is position defined in SE3 or theta?
     if isinstance(sConfig, np.ndarray):
@@ -95,9 +129,20 @@ def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List
     return None
     
 def Grip(gripping: bool, serial: SerialData):
-    """Assumption: Closing --> positive encoder count, 
-                   Opening --> negative encoder count.
+    """Function to control the gripper.
+    :param gripping: Boolean indicating if the gripper should be closed
+    (True) or open (False).
+    :param serial: SerialData class object for data transmission and
+                   -storage.
+    Example input:
+    gripping = True
+    serial = SerialData(6, [0,0,0,0,0,0], [1,1,1,1,1,1], 
+                        [0.1,0.1,0.1,0.1,0.1,0.1], robot.joints)
+    
+    Assumption: Closing --> positive encoder count, 
+                Opening --> negative encoder count.
     TODO: Validate assumption"""
+
     fullCloseCount = 1000 #TODO: Find proper value!
     fullOpenCount = 0
     closingPWM = 40 #TODO: Find proper value
