@@ -7,7 +7,7 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 from classes import Robot, Joint, Link
-from robot_init import robot
+from robot_init import robot, robotFric
 from typing import List, Tuple
 import modern_robotics as mr
 import numpy as np
@@ -145,6 +145,14 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
         column of the Jacobian between wrenches/twists in {i} and 
         joint space"""
         tau[i] = np.dot(F[:,i].T, screwA[:,i]) + tauFric[i] 
+        tauStat = robot.joints[i].fricPar['stat']
+        tauKin = robot.joints[i].fricPar['kin']
+        bVisc = robot.joints[i].fricPar['visc']
+        eff = robot.joints[i].fricPar['eff']
+        tauFric[i] = FricTau(tau[i], dtheta[i], tauStat, bVisc, tauKin, 
+                                eff)
+        tau[i] += tauFric[i]
+        
     return tau
 
 def MassMatrix(robot: Robot, theta: List) -> np.ndarray:
@@ -343,14 +351,12 @@ def SimulateStep(robot: Robot, thetaPrev: List, dthetaPrev: List,
     return (theta, dtheta, ddtheta)
 
 if __name__ == "__main__":
-    thetaPrev = [1,1,1,1,1]
-    dthetaPrev = [1,1,1,1,1]
-    ddthetaPrev = [1,1,1,1,1]
-    tau = [1,1,1,1,1]
-    g = np.array([0,0,-9.81])
-    FTip = np.array([1,1,1,1,1,1])
-    dt = 0.001
-    theta, dtheta, ddtheta = SimulateStep(robot, thetaPrev, dthetaPrev, ddthetaPrev, tau, g, FTip, dt)
-    print(['%.4f' % t for t in theta])
-    print(['%.4f' % v for v in dtheta])
-    print(['%.4f' % a for a in ddtheta])
+    theta = np.array([0, 0.05*np.pi, 0.05*np.pi, 0.05*np.pi, 0.05*np.pi])
+    dtheta = np.array([0.1*np.pi, 0.1*np.pi, 0.1*np.pi, 0.1*np.pi, 0.1*np.pi])
+    ddtheta = np.array([0.5*np.pi, 0.5*np.pi, 0.5*np.pi, 0.5*np.pi, 0.5*np.pi])
+    g = np.array([0, 0, -9.81])
+    FTip = np.array([0,0,0,0,0,0])
+    tau = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    tauWFric = FeedForward(robotFric, theta, dtheta, ddtheta, g, FTip)
+    print(np.round(tau,3))
+    print(np.round(tauWFric,3))
