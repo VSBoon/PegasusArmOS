@@ -142,7 +142,7 @@ def Tau2Curr(tauComm: float, gRatio: float, km: float,
     tauMotor = tauComm/gRatio
     currMotor = tauMotor/km
     if currMotor > currLim:
-        currMotor == currLim
+        currMotor = currLim
     return currMotor
 
 def Curr2MSpeed(currMotor: float) -> float:
