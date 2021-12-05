@@ -218,3 +218,29 @@ def Curr2MSpeed(currMotor: float) -> float:
     linFactor = 255/2 #TODO: FIND ACCURATE LINFACTOR!
     mSpeed = currMotor *linFactor
     return mSpeed
+
+def LimDamping(theta: np.ndarray, dtheta: np.ndarray, 
+               limList: List[List[float]], k: float=20) -> np.ndarray:
+    """Ensures joint velocities are damped when coming close to / crossing"""
+    n = len(limList)
+    dthetaNew = dtheta.copy()
+    for i in range(n):
+            overshot = False
+            if abs(theta[i] - limList[i][0]) < \
+            abs(theta[i] - limList[i][1]):
+                limClose = limList[i][0]
+                toLim = dtheta[i] < 0
+                if theta[i] < limClose:
+                    overshot = True
+            else:
+                limClose = limList[i][1]
+                toLim = dtheta[i] > 0
+                if theta[i] > limClose:
+                    overshot = True
+            if toLim:
+                if overshot:
+                    damping = 0
+                else:
+                    damping = abs(np.arctan(k*(theta[i]-limClose)))/(0.5*np.pi)
+                    dthetaNew[i] *= damping
+    return dthetaNew

@@ -17,7 +17,7 @@ from trajectory_generation.traj_gen import TrajGen, TrajDerivatives
 from dynamics.dynamics_funcs import FeedForward
 from serial_comm.serial_comm import SReadAndParse
 from classes import Robot, SerialData, PID, IKAlgorithmError, InputError
-from util import Tau2Curr, Curr2MSpeed, RToEuler
+from util import Tau2Curr, Curr2MSpeed, RToEuler, LimDamping
 
 def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List], robot: Robot, serial: SerialData, dt: float, vMax: float, omgMax: float, PIDObj: PID, dtComm: float, dtPID: float): #Removed localMu for testing
     """Position control by means of point-to-point trajectory 
@@ -197,6 +197,8 @@ def VelControl(robot: Robot, serial: SerialData, vel:
     else:
         raise InputError("Invalid method. Choose between 'joint'" +
                          "and 'twist'.")
+    #Add 'directional limit damping' (k might need tweaking):
+    dtheta = LimDamping(theta, dtheta, robot.limList, k=20) 
     ddtheta = (dtheta - dthetaPrev)/dt
     dthetaCurr = (np.array(serial.currAngle) - 
                   np.array(serial.prevAngle))/dtComm
