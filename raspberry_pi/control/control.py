@@ -288,8 +288,8 @@ def ImpControl(robot: Robot, serial: SerialData, TDes: np.ndarray,
     angles = anglesCurr - anglesDes
 
     """Obtain the error twist and derivative of the error twist"""
-    theta = serial.currAngle
-    dtheta = (serial.currAngle - serial.prevAngle)/dt
+    theta = serial.currAngle[:-1]
+    dtheta = (serial.currAngle[:-1] - serial.prevAngle[:-1])/dt
     Slist = np.c_[robot.screwAxes[0], robot.screwAxes[1]]
     for i in range(2, len(robot.screwAxes)):
         Slist = np.c_[Slist, robot.screwAxes[i]]
