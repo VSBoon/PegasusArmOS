@@ -6,7 +6,7 @@ current = os.path.dirname(os.path.realpath(__file__))
 parent = os.path.dirname(current)
 sys.path.append(parent)
 
-from kinematic_funcs import FKSpace, IKSpace
+from kinematics.kinematic_funcs import FKSpace, IKSpace
 from util import ThetaInitGuess
 from classes import Joint, IKAlgorithmError
 import modern_robotics as mr
