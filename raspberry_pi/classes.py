@@ -109,9 +109,9 @@ class Robot():
 class SerialData():
     """Container class containing all relevant information and functions
     for parsing and acting on data received over serial communication."""
-    def __init__(self, lenData: int, desAngles: 
-                 List[float], maxDeltaAngle: List[float], 
-                 angleTol: List[float], joints: List[Joint]) -> "SerialData":
+    def __init__(self, lenData: int, joints: List[Joint], desAngles: 
+                 List[float]=[0 for i in range(6)], maxDeltaAngle: List[float]=[0.3*np.pi for i in range(6)], 
+                 angleTol: List[float]=[0 for i in range(6)]) -> "SerialData":
         """Constructor for SerialData class.
         :param lenData: The expected number of data packets (equal to
                         number of motor units).
@@ -133,9 +133,9 @@ class SerialData():
         self.rotDirCurr = [None for i in range(lenData)]
         self.current = [None for i in range(lenData)]
         self.homing = [None for i in range(lenData)]
-        self.currAngle = [0 for i in range(lenData)]
-        self.prevAngle = [0 for i in range(lenData)]
-        self.mSpeed = [0 for i in range(lenData)]
+        self.currAngle = [0. for i in range(lenData)]
+        self.prevAngle = [0. for i in range(lenData)]
+        self.mSpeed = [0. for i in range(lenData)]
         self.rotDirDes = [0 for i in range(lenData)]
         self.dataOut = ['0|0|0' for i in range(lenData)]
         self.maxDeltaAngle = maxDeltaAngle
@@ -347,6 +347,11 @@ class PID():
         self.errPrev = err
         return PID
 
+    def Reset(self):
+        """Reset previous error and integral term."""
+        n = self.ILim.size
+        self.errPrev = np.zeros(n)
+        self.termI = np.zeros(n)
 
 ### ERROR CLASSES
 class IKAlgorithmError(BaseException):
