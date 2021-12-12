@@ -244,3 +244,24 @@ def LimDamping(theta: np.ndarray, dtheta: np.ndarray,
                     damping = abs(np.arctan(k*(theta[i]-limClose)))/(0.5*np.pi)
                     dthetaNew[i] *= damping
     return dthetaNew
+
+
+
+def saveToCSV(dataMat: np.ndarray, csvTitle: str, headers: str=None, 
+              reset=False):
+    """Saves an array of data to a CSV file, row by row.
+    :param dataMat: 2-dimensional numpy array with data.
+    :param csvTitle: Address of the CSV file relative to the current
+                     file.
+    :param headers: Optional, a list of headers on top of the CSV file.
+    :param reset: Optional, truncate the CSV file (delete all data 
+                  inside) before writing."""
+    if reset:
+        with open(csvTitle, "w+") as csvFile:
+            csvFile.close() #Truncate the file
+    with open(csvTitle, 'a') as csvFile:
+        if headers:
+            np.savetxt(csvFile, dataMat, fmt='%.5f', delimiter=',', 
+                       header=headers)
+        else:
+            np.savetxt(csvFile, dataMat, fmt='%.5f', delimiter=',')

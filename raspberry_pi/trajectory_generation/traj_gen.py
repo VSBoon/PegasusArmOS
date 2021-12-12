@@ -132,29 +132,28 @@ def TrajGen(robot: Robot, startConfig: Union[np.ndarray, List[float]], endConfig
     if timeScaling != 3 and timeScaling != 5:
                 print("Invalid timeScaling; defaulting to quintic.")
                 timeScaling = 5
+
     if method == "joint" or method == "Joint":
-        if not isinstance(startConfig, list) or \
-           not isinstance(endConfig, list):
+        if not isinstance(startConfig, np.ndarray) or \
+           not isinstance(endConfig, np.ndarray):
                 raise SyntaxError("To make a trajectory in the joint space," +
-                                  " please input a list of joint angles.")
-        elif len(startConfig) != len(endConfig):
+                                  " please input an array of joint angles.")
+        elif startConfig.size != endConfig.size:
             raise DimensionError("start- and end joint angle lists" +
                                  " are not of the same length: " +
-                                 f"({len(startConfig),len(endConfig)}")
+                                 f"({startConfig.size, endConfig.size}")
         else:
             thetaMaxPos = max(np.subtract(endConfig, startConfig))
             thetaMaxNeg = min(np.subtract(endConfig, startConfig))
             thetaMax = max(abs(thetaMaxNeg), thetaMaxPos)
             tTot = 1.5*(thetaMax / omgMax) #Scaling factor might require tweaking
+            if tTot == 0:
+                tTot = 0.1 #To avoid division by zero errors
             nSubConfigs = int(tTot/dt + 2)
             traj = JointTrajLims(startConfig, 
             endConfig, robot.limList, tTot, nSubConfigs, timeScaling)
     else:
-        if not isinstance(startConfig, np.ndarray) or \
-           not isinstance(endConfig, np.ndarray):
-            raise SyntaxError("To make a trajectory in SE(3), input SE(3) " + 
-                              "numpy arrays as start- and end configurations.")
-        elif not mr.TestIfSE3(startConfig) or not mr.TestIfSE3(endConfig):
+        if not mr.TestIfSE3(startConfig) or not mr.TestIfSE3(endConfig):
             raise SyntaxError("Ensure that both the start- and end " +
                               "configuration are part of the SE(3) " + 
                               "manifold.")
