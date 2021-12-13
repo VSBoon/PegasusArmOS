@@ -140,6 +140,7 @@ def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List
                 if event.type == pygame.QUIT:
                     raise KeyboardInterrupt
             screen.blit(background, (0,0))
+            pygame.display.update()
             lastFrame = time.perf_counter()
     print("Finished trajectory!")
     return None
@@ -254,20 +255,20 @@ def ForceControl(robot: Robot, serial: SerialData,
     the output shafts of the joints for torque feedback, which can 
     easily be mapped to an end-effector wrench for feedback control.
     """
-    theta = serial.currAngle
+    theta = np.array(serial.currAngle[:-1]) #Exclude gripper
     g = np.array([0,0,-9.81])
     dtheta = np.zeros(len(robot.joints))
     ddtheta = np.zeros(len(robot.joints))
-    tauFF = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
     kDamping = np.eye(6)*damping
-    dthetaCurr = (theta - serial.prevAngle)/dt
+    dthetaCurr = (theta - np.array(serial.prevAngle[:-1]))/dt
     Slist = np.c_[robot.screwAxes[0], robot.screwAxes[1]]
     for i in range(2, len(robot.screwAxes)):
         Slist = np.c_[Slist, robot.screwAxes[i]]
     twist = np.dot(mr.JacobianSpace(Slist, theta), dthetaCurr)
-    """The final term in tau prevents the end-effector from quickly
+    """The final term in FTip prevents the end-effector from quickly
     moving / accelerating when it is not pushing against anything."""
-    tau = tauFF - np.dot(kDamping, twist) 
+    FTip -= np.dot(kDamping,twist)
+    tau = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
     I = [Tau2Curr(tau[i], robot.joints[i].gearRatio, robot.joints[i].km, 
                   currLim=2) for i in range(len(robot.joints))]
     #TODO: Confirm conversion factor I --> PWM
@@ -305,7 +306,7 @@ def ImpControl(robot: Robot, serial: SerialData, TDes: np.ndarray,
 
     """Obtain the error twist and derivative of the error twist"""
     theta = serial.currAngle[:-1]
-    dtheta = (serial.currAngle[:-1] - serial.prevAngle[:-1])/dt
+    dtheta = (np.array(serial.currAngle[:-1]) - np.array(serial.prevAngle[:-1]))/dt
     Slist = np.c_[robot.screwAxes[0], robot.screwAxes[1]]
     for i in range(2, len(robot.screwAxes)):
         Slist = np.c_[Slist, robot.screwAxes[i]]

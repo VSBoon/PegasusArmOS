@@ -321,7 +321,6 @@ while not methodSelected:
                     "control, type 'pos'.\nFor velocity control, " +\
                     "type 'vel'.\nFor force control, type 'force'.\n"+\
                     "For impedance control, type 'imp'.\n")
-        print("\n")
         if method != 'pos' and method != 'vel' and \
         method != 'force' and method != 'imp':
             print("Invalid method. Try again.")
@@ -349,12 +348,14 @@ elif method == 'force':
     while not pathSelected:
         path = input("Please input the path to the CSV file with " +
                      "the desired end-effector wrenches over time\n")
+        path = os.path.join(current, path)
         try:
             with open(path) as csvFile:
-                csvRead = csv.reader(csvFile)
+                csvRead = csv.reader(csvFile, delimiter=';')
                 wrenchesList = []
                 for wrenchCSV in csvRead:
-                    wrenchesList.append(np.array(wrenchCSV))
+                    wrenchRow = [float(val.replace(',','.')) for val in wrenchCSV]
+                    wrenchesList.append(np.array(wrenchRow))
             pathSelected = True
         except FileNotFoundError:
             print("Incorrect path.")
@@ -368,8 +369,8 @@ elif method == 'force':
             print("Invalid input. Please input a time in [s].")
 elif method == 'imp':
     #Get robot into desired position.
-    sConfig = np.array(serial.currAngle)
-    eConfig = GetEConfig(sConfig)[1]
+    sConfig = np.array(serial.currAngle[:-1])
+    eConfig = GetEConfig(sConfig, Pegasus)[1]
     if eConfig.shape != (4,4):
         TDes = FKSpace(Pegasus.TsbHome, Pegasus.screwAxes, eConfig)
     else:
@@ -476,7 +477,7 @@ while True: #Main loop!
                     keyDownPrev, noInput, wSel, vSel, vDesE = \
                     GetKeysEF(VPrev, events, keyDownPrev, vSelE, wSelE, 0, 
                               wMax, 0, vMax, efIncrL, efIncrR)
-                    print(vDesE)
+                    pygame.display.update()
                     screen.blit(background, (0,0))
                     lastFrame = time.perf_counter()
 
@@ -495,12 +496,14 @@ while True: #Main loop!
         elif method == 'force': #Force control
             n = -1 #iterator
             startTime = time.perf_counter()
-            while time.perf_counter() <= dtWrench*len(wrenchesList):
+            print(f"Expected total time: {dtWrench*len(wrenchesList)} s.")
+            while time.perf_counter() - startTime <= dtWrench*len(wrenchesList):
                 nPrev = n
                 n = round((time.perf_counter()-startTime)/dtWrench)
                 if n >= len(wrenchesList):
+                    print("finished!")
                     #Initiate hold-pos
-                    thetaDes = eConfig
+                    thetaDes = np.array(serial.currAngle[:-1])
                     errThetaCurr = np.array([100*np.pi for i in serial.currAngle[:-1]])
                     print("Stabilizing around new position...")
                     while all(np.greater(errThetaCurr, errThetaMax)):
@@ -509,10 +512,10 @@ while True: #Main loop!
                             serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, thetaDes, 
                                                     dtHold)
                             lastHold = time.perf_counter()
-
+                    
                         lastCheck = SReadAndParse(serial, lastCheck, dtComm, Teensy)[0]
                         if (time.perf_counter() - lastComm >= dtComm):
-                            errThetaCurr = thetaDes - serial.currAngle
+                            errThetaCurr = thetaDes - np.array(serial.currAngle[:-1])
                             serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
                                                 speed in serial.mSpeed]
                             for i in range(serial.lenData-1): 
@@ -533,6 +536,7 @@ while True: #Main loop!
                                 if event.type == pygame.QUIT:
                                     raise KeyboardInterrupt
                             screen.blit(background, (0,0))
+                            pygame.display.update()
                             lastFrame = time.perf_counter()
 
                 lastCheck = SReadAndParse(serial, lastCheck, dtComm, Teensy)[0]
@@ -556,6 +560,7 @@ while True: #Main loop!
                     if event.type == pygame.QUIT:
                         raise KeyboardInterrupt
                 screen.blit(background, (0,0))
+                pygame.display.update()
                 lastFrame = time.perf_counter()
 
             lastCheck = SReadAndParse(serial, lastCheck, dtComm, Teensy)[0]
