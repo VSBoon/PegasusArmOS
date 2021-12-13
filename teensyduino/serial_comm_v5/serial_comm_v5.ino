@@ -13,6 +13,7 @@ String command;
 const int nCommands = 6; //Number of seperate groups of data.
 int mSpeed[nCommands] = {0};
 int mSpeedPrev[nCommands] = {0};
+int mSpeedMax = 180; //Speed limiter, as Raspberry Pi code maxes at 255. To be validated!
 int rotCCW[nCommands]; //Desired direction
 
 //Motor driving pins
@@ -53,6 +54,7 @@ void setup() {
   /* NOTE: Serial.begin() is omitted because it is unnecessary for Teensy,
    * and only slows the startup down by up to several seconds.
    */
+  Serial.begin(115200); //DEBUG
   for (int i = 0; i < nCommands; i++) {
     pinMode(mPins[i][0], OUTPUT);
     pinMode(mPins[i][1], OUTPUT);
@@ -110,7 +112,7 @@ void loop() {
         Serial.write('|');
         Serial.write(rotDirBuff[i]);
         Serial.write('|');
-        Serial.write(homing[i]);
+        Serial.write(homingBuff[i]);
         Serial.write(']');
       }
       Serial.write('\r');
@@ -134,6 +136,9 @@ void ParseCommand(String com) {
     volatile byte sepIndex1 = com.indexOf("|", parseIndex);
     volatile byte endIndex = com.indexOf("'", startIndex + 1); //Finds last '
     mSpeed[commandIt] = com.substring(startIndex + 1, sepIndex1).toInt(); //+1 to omit first "'"
+    if (mSpeed[commandIt] > mSpeedMax) {
+      mSpeed[commandIt] = mSpeedMax
+    }
     rotCCW[commandIt] = com.substring(sepIndex1 + 1, endIndex).toInt(); //removed +1!
     parseIndex = endIndex + 1; //Start parsing the next data group
     commandIt++;
