@@ -199,7 +199,7 @@ def VelControl(robot: Robot, serial: SerialData, vel:
     :return dtheta: Current desired joint velocities (w/ limit damping) 
     """
     vel = np.array(vel)
-    theta = serial.currAngle
+    theta = serial.currAngle[:-1]
     if method == 'twist' or method == 'Twist':
         #Calculate joint velocities with pseudo-inverse Jacobian
         Slist = np.c_[robot.screwAxes[0], robot.screwAxes[1]]
@@ -215,8 +215,8 @@ def VelControl(robot: Robot, serial: SerialData, vel:
     #Add 'directional limit damping' (k might need tweaking):
     dtheta = LimDamping(theta, dtheta, robot.limList, k=20) 
     ddtheta = (dtheta - dthetaPrev)/dt
-    dthetaCurr = (np.array(serial.currAngle) - 
-                  np.array(serial.prevAngle))/dtComm
+    dthetaCurr = (np.array(serial.currAngle[:-1]) - 
+                  np.array(serial.prevAngle[:-1]))/dtComm
     g = np.array([0,0,-9.81])
     FTip = np.zeros(6) #Velocity control, no FTip
     tauFF = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
