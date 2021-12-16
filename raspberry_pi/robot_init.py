@@ -88,16 +88,22 @@ robot = Robot(joints, links, TsbHome)
 
 """Here, we add a friction model to our joints for a second (hopefully 
 more accurate) instance of the robot. Values should be experimentally confirmed!"""
-PWMMinWormGear = 60 #Can be confirmed & adjusted!
+PWMMinWormGear = 80 #Can be confirmed & adjusted!
 PWMMinSprocket = 30 #Should be confirmed & adjusted!
-eff = [0.65, 0.65, 0.75, 0.75, 0.75]
+eff = [0.5, 0.5, 0.6, 0.6, 0.6]
 tauStat0 = (2/255)*(J0.gearRatio*J0.km)*PWMMinWormGear
-tauStat1 = (2/255)*(J1.gearRatio*J1.km)*PWMMinWormGear
+tauStat1 = (2/255)*(J1.gearRatio*J1.km)*PWMMinWormGear*0.75
 tauStat2 = (2/255)*(J2.gearRatio*J2.km)*PWMMinSprocket
 tauStat3 = (2/255)*(J3.gearRatio*J3.km)*PWMMinSprocket
 tauStat4 = (2/255)*(J4.gearRatio*J4.km)*PWMMinSprocket
+#tauStat0 = 5
+#tauStat1 = 5
+#tauStat2 = 2
+#tauStat3 = 2
+#tauStat4 = 2
+
 tauStat = [tauStat0, tauStat1, tauStat2, tauStat3, tauStat4]
-tauKin = [0.9*stat for stat in tauStat]
+tauKin = [0.7*stat for stat in tauStat]
 bVisc = [0,0,0,0,0]
 J0N = Joint(S0, [None, L0], gearRatioList[0], km[0], cpr, lims0, tauStat[0], 
             tauKin[0], bVisc[0], eff[0])
@@ -109,5 +115,6 @@ J3N = Joint(S3, [L2,L34], gearRatioList[3], km[3], cpr, lims3, tauStat[3],
             tauKin[3], bVisc[3], eff[3])
 J4N = Joint(S4, [L2,L34], gearRatioList[4], km[4], cpr, lims4, tauStat[4], 
             tauKin[4], bVisc[4], eff[4])
-joints = [J0N, J1N, J2N, J3N, J4N]
-robotFric = Robot(joints, links, TsbHome)
+joints2 = [J0N, J1N, J2N, J3N, J4N]
+robotFric = Robot(joints2, links, TsbHome)
+#print(robotFric.joints[0].fricPar['stat'])

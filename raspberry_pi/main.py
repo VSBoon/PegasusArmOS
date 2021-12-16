@@ -10,12 +10,13 @@ print("\n\n--- Welcome to the PegasusArm OS v1.0.0 User Interface ---\n\n")
 print("Importing modules...\n")
 import numpy as np
 import modern_robotics as mr
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
 import time
 import csv
 from typing import List, Tuple, Dict
-from robot_init import robot, robotFric
+from robot_init import robot as R1 
+from robot_init import robotFric as R2
 from settings import sett
 from classes import SerialData, Robot, InputError, PID
 from util import Tau2Curr, Curr2MSpeed
@@ -240,17 +241,24 @@ def GetKeysEF(VPrev: np.ndarray, events: List["pygame.Event"], keyDownPrev: \
 
 def HoldPos(serial: SerialData, robot: Robot, PIDObj: PID, 
             thetaDes: np.ndarray, dtHold: float):
-    thetaCurr = np.array(serial.currAngle[-1]) #Minus gripper
+    thetaCurr = np.array(serial.currAngle[:-1]) #Minus gripper
+    thetaPrev = np.array(serial.prevAngle[:-1])
+    dThetaPrev = (thetaCurr - thetaPrev)/dtHold
     dThetaDes = np.array([0 for angle in thetaDes])
     ddThetaDes = np.array([0 for angle in thetaDes])
     FTip = np.array([0 for i in range(6)])
     g = np.array([0,0,-9.81])
-    tauFF = FeedForward(robot, thetaDes, dThetaDes, ddThetaDes, g, FTip)
+    tauFF = FeedForward(robot, thetaDes, dThetaDes, dThetaPrev, ddThetaDes, g, FTip)
     tauPID = PIDObj.Execute(thetaDes, thetaCurr, dtHold)
     tauComm = tauFF + tauPID
+    #Diff-drive properties:
+    tauJ4 = tauComm[3]
+    tauJ5 = tauComm[4]
+    tauComm[3] = -tauJ4 - tauJ5
+    tauComm[4] = tauJ4 - tauJ5 
     I = [Tau2Curr(tauComm[i], robot.joints[i].gearRatio, 
                   robot.joints[i].km, 2) for i in range(len(robot.joints))]
-    PWM = [Curr2MSpeed(current) for current in I]
+    PWM = [round(Curr2MSpeed(current)) for current in I]
     return PWM
 
 robotSelected = False
@@ -260,10 +268,10 @@ while not robotSelected:
             "For a model with friction, enter 0.\nFor a robot " +\
             "without friction, enter 1.\n")
         if robotType == "0":
-            Pegasus = robotFric
+            Pegasus = R2
             robotSelected = True
         if robotType == "1":
-            Pegasus = robot
+            Pegasus = R1
             robotSelected = True
         else:
             print("Invalid entry. Enter either '0' or '1'-0")
@@ -308,7 +316,6 @@ vPrevJ = np.zeros(5)
 wSelJ = jIncr
 wSelE = efIncrR
 vSelE = efIncrL
-pressed = dict()
 noInput = True
 noInputPrev = False
 VPrev= np.zeros(6)
@@ -386,7 +393,7 @@ while True: #Main loop!
     try:
         if method == 'pos': #Position control
             sConfig = np.array(serial.currAngle[:-1])
-            sConfig, eConfig = GetEConfig(sConfig, robot)
+            sConfig, eConfig = GetEConfig(sConfig, Pegasus)
             try:
                 PosControl(sConfig, eConfig, Pegasus, serial, dtPosConf, 
                            vMax, wMax, PIDObj, dtComm, dtPID, dtFrame, Teensy, screen, background)
@@ -404,7 +411,7 @@ while True: #Main loop!
             while all(np.greater(errThetaCurr, errThetaMax)):
                 if time.perf_counter() - lastHold >= dtHold: 
             #While not stabilized within error bounds, do holdpos
-                    serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, thetaDes, 
+                    serial.mSpeed[:-1] = HoldPos(serial, Pegasus, PIDObj, thetaDes, 
                                             dtHold)
                     lastHold = time.perf_counter()
 
@@ -425,13 +432,12 @@ while True: #Main loop!
         elif method == 'vel': #Velocity Control
             if space == 'joint':
                 if time.perf_counter() - lastPID > dtPID:
-                    if noInput and not any(list(pressed.values())):
+                    if noInput and not any(keyDownPrev) and not np.any(wDesJ):
                         if noInput != noInputPrev:
                             #Initiate PID
                             PIDObj.Reset()
                             thetaDes = np.array(serial.currAngle[:-1])
-                            thetacurr = np.array(serial.currAngle[:-1])
-                        serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, 
+                        serial.mSpeed[:-1] = HoldPos(serial, Pegasus, PIDObj, 
                                                      thetaDes, dtPID)
                     else:
                     #VelControl implicitely updates serial.mSpeed (FF+PID).
@@ -447,19 +453,19 @@ while True: #Main loop!
                     noInputPrev = noInput
                     wDesPrev = wDesJ
                     keyDownPrev, noInput, wSelJ, wDesJ = GetKeysJoint(keyDownPrev, events, wSelJ, wDesPrev, 0, wMax, jIncr)
-                    print(wDesJ)
                     screen.blit(background, (0,0))
                     lastFrame = time.perf_counter()
+                    
             elif space == 'end-effector':
                 if time.perf_counter() - lastPID > dtPID:
                     #VelControl implicitely updates serial.mSpeed.
-                    if noInput and not any(list(pressed.values())):
+                    if noInput and not any(keyDownPrev):
                         if noInput != noInputPrev:
                             #Initiate PID
                             PIDObj.Reset()
                             thetaDes = np.array(serial.currAngle[:-1])
                             thetacurr = np.array(serial.currAngle[:-1])
-                        serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, 
+                        serial.mSpeed[:-1] = HoldPos(serial, Pegasus, PIDObj, 
                                                      thetaDes, dtPID)
                     else:
                         #FF & PID!
@@ -486,12 +492,13 @@ while True: #Main loop!
                 serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
                                     speed in serial.mSpeed]
                 for i in range(serial.lenData-1): #TODO: Add Gripper function
-                    serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
+                    serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
                                         f"{serial.rotDirDes[i]}"
-                    #TODO: Replace last entry w/ gripper commands
-                    serial.dataOut[-1] = f"{0|0}"
-                    Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
-                    lastComm = time.perf_counter()
+                #TODO: Replace last entry w/ gripper commands
+                serial.dataOut[-1] = f"{0|0}"
+                print(serial.dataOut)
+                Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
+                lastComm = time.perf_counter()
         
         elif method == 'force': #Force control
             n = -1 #iterator
@@ -509,7 +516,7 @@ while True: #Main loop!
                     while all(np.greater(errThetaCurr, errThetaMax)):
                         if time.perf_counter() - lastHold >= dtHold: 
                     #While not stabilized within error bounds, do holdpos
-                            serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, thetaDes, 
+                            serial.mSpeed[:-1] = HoldPos(serial, Pegasus, PIDObj, thetaDes, 
                                                     dtHold)
                             lastHold = time.perf_counter()
                     
@@ -519,7 +526,7 @@ while True: #Main loop!
                             serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
                                                 speed in serial.mSpeed]
                             for i in range(serial.lenData-1): 
-                                serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
+                                serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
                                                     f"{serial.rotDirDes[i]}"
                             serial.dataOut[-1] = f"{0|0}"
                             Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
@@ -544,7 +551,7 @@ while True: #Main loop!
                     serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
                                         speed in serial.mSpeed]
                     for i in range(serial.lenData-1): #TODO: Add Gripper function
-                        serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
+                        serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
                                             f"{serial.rotDirDes[i]}"
                         #TODO: Replace last entry w/ gripper commands
                         serial.dataOut[-1] = f"{0|0}"
@@ -568,12 +575,12 @@ while True: #Main loop!
                 serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
                                     speed in serial.mSpeed]
                 for i in range(serial.lenData-1): #TODO: Add Gripper function
-                    serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
+                    serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
                                         f"{serial.rotDirDes[i]}"
-                    #TODO: Replace last entry w/ gripper commands
-                    serial.dataOut[-1] = f"{0|0}"
-                    Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
-                    lastComm = time.perf_counter()
+                #TODO: Replace last entry w/ gripper commands
+                serial.dataOut[-1] = f"{0|0}"
+                Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
+                lastComm = time.perf_counter()
     except KeyboardInterrupt:
         print("Ctrl+C pressed, Quitting...") 
         #Set motor speeds to zero & close serial.

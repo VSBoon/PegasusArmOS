@@ -17,7 +17,7 @@ int mSpeedMax = 180; //Speed limiter, as Raspberry Pi code maxes at 255. To be v
 int rotCCW[nCommands]; //Desired direction
 
 //Motor driving pins
-const byte mPins[nCommands][2] = {{34,33},{36,35},{13,37},{17,16},{19,18},{20,21}};
+const byte mPins[nCommands][2] = {{7,33},{36,6},{13,37},{14,15},{19,18},{5,4}};
 
 //Encoder pins
 const byte ePins[nCommands][2] = {{0,1},{9,3},{12,11},{24,25},{27,28},{30,31}};
@@ -30,23 +30,12 @@ const byte hPins[nCommands] = {2, 10, 8, 26, 29};
 
 long totCount[nCommands] = {0l};
 int rotDir[nCommands] = {0}; //Actual direction
-float curr[nCommands] = {0}; 
-float currErr = 0;
-float currDes = 0;
-float currVal = 0;
-float currP = 0;
-float currD = 0;
-float kp = 1; //To be tweaked!
-float kd = 0.01; //To be tweaked!
-int currErrPrev = 0; 
 volatile byte homing[nCommands] = {0}; //TODO: Check if 0 or 1.
 char totCountBuff[nCommands][10]; //Supports long's up to +/-10.000.000 counts
 char rotDirBuff[nCommands][2];
-char currBuff[nCommands][6];
 char homingBuff[nCommands][2];
-char mBuff[nCommands][5];
 
-int dtComm = 200; //In milliseconds. Make sure this aligns with dtComm in Python code!
+int dtComm = 100; //In milliseconds. Make sure this aligns with dtComm in Python code!
 int dtSense = 200; //In milliseconds
 
 
@@ -103,17 +92,13 @@ void loop() {
       for (int i = 0; i < nCommands; i++) {
         ltoa(totCount[i], totCountBuff[i], 10);
         itoa(rotDir[i], rotDirBuff[i], 10);
-        dtostrf(curr[i], 4, 2, currBuff[i]); // UNTESTED!
         itoa(homing[i], homingBuff[i], 10);
-        itoa(mSpeed[i], mBuff[i], 10);
         Serial.write('[');
         Serial.write(totCountBuff[i]);
         Serial.write('|');
         Serial.write(rotDirBuff[i]);
         Serial.write('|');
         Serial.write(homingBuff[i]);
-        Serial.write('|'); //Debug
-        Serial.write(mBuff[i]); //Debug
         Serial.write(']');
       }
       Serial.write('\r');

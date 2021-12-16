@@ -11,7 +11,7 @@ from robot_init import robot as Pegasus
 from kinematics.kinematic_funcs import IKSpace
 import modern_robotics as mr
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from typing import Union, List, Tuple
 
 def JointTrajLims(thetaStart: Union[List, np.ndarray], thetaEnd: 
@@ -251,8 +251,8 @@ if __name__ == "__main__":
     trajTheta, trajVel, trajAcc = TrajDerivatives(traj, robot=Pegasus, method="joint", dt=0.1)
     valList = trajTheta[:,0]
     timeList = [dt*n for n in range(trajTheta[:,0].size)]
-    plt.plot(timeList, valList)
-    plt.show()
+    #plt.plot(timeList, valList)
+    #plt.show()
     thetaStart = np.array([0,0,0,0,0])
     thetaEnd = np.array([np.pi, -0.8*np.pi, 0.5*np.pi, 0.7*np.pi, 0.4*np.pi])
     lims = [[-0.1*np.pi, -0.7*np.pi] for i in range(len(thetaStart))]
