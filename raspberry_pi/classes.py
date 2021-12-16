@@ -175,7 +175,7 @@ class SerialData():
                 angleM4 = self.totCount[3]*self.joints[3].enc2Theta
                 angleM5 = self.totCount[4]*self.joints[4].enc2Theta
                 average = (angleM5 + angleM4)/2
-                self.currAngle[i] = angleM4 - average
+                self.currAngle[i] = angleM5 - average
             elif i == 4: #Diff drive 'synchronous' part;
                 """A similar argument as for the fourth axis is made."""
                 angleM4 = self.totCount[3]*self.joints[3].enc2Theta

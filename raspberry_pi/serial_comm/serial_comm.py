@@ -13,6 +13,8 @@ import serial
 import serial.tools.list_ports
 import time
 import numpy as np
+np.set_printoptions(precision=4, floatmode='fixed', suppress=True)
+
 
 #TODO: Docstrings, examples, & tests.
 def FindSerial(askInput=False) -> str:
@@ -198,16 +200,15 @@ def SetPointControl1(SPData: SerialData, localMu: serial.Serial,
 if __name__ == "__main__":
     ### SETUP SERIAL COMMUNICATION ###
     baudRate = 115200
-    lenData = 5 #Number of motors
-    cprList = [Pegasus.joints[i].cpr for i in range(lenData)]
+    lenData = 6 #Number of motors
+    cprList = [512]*lenData
     desAngles = [4*np.pi, 4*np.pi, 4*np.pi, 4*np.pi, 4*np.pi]
     maxDeltaAngles = [5*np.pi for i in range(lenData)]
     tolAngle = [0.02*np.pi for i in range(lenData)]
-    SPData = SerialData(lenData, desAngles, maxDeltaAngles, tolAngle, 
-                        Pegasus.joints)
+    SPData = SerialData(lenData, Pegasus.joints)
     dtComm = 0.005
     port, warning = FindSerial()
-    localMu = StartComms(port, baudRate)
+    localMu = StartComms(port)
     mSpeedMax = 200
     mSpeedMin = 120
     encAlg = "utf-8"
@@ -216,30 +217,18 @@ if __name__ == "__main__":
 
     try:
         lastCheck = time.perf_counter()
+        lastPrint = time.perf_counter()
+        dtPrint = 0.33
         while True:
             #SReadAndParse has an internal dt clock
-            lastCheck, controlBool = SReadAndParse(SPData, lastCheck, 
-                                                   dtComm, localMu, 
-                                                   encAlg)
-            if controlBool and (time.time() - lastCheck >= dtComm):
-                commFault = SPData.CheckCommFault()
-                SPData.GetDir()
-                success = SPData.CheckTolAng()
-                for i in range(SPData.lenData):
-                    if commFault[i] or success[i]:
-                        continue
-                    else:
-                        angleErr = SPData.desAngle[i] - SPData.currAngle[i]
-                        SPData.PControl1(i, mSpeedMax, mSpeedMin)
-                        if SPData.mSpeed[i] < mSpeedMin:
-                            SPData.mSpeed[i] = mSpeedMin
-                        elif SPData.mSpeed[i] > mSpeedMax:
-                            SPData.mSpeed[i] = mSpeedMax
-                    SPData.dataOut[i] = f"{SPData.mSpeed[i]}|" + \
-                                        f"{SPData.rotDirDes[i]}|" + \
-                                        f"{SPData.homing[i]}"
-                print(SPData.dataOut)
-                localMu.write(f"{SPData.dataOut}\n".encode(encAlg))
+            lastCheck = SReadAndParse(SPData, lastCheck, 
+                                      dtComm, localMu)[0]
+            if time.perf_counter() - lastPrint >= dtPrint:
+                angles = np.array([SPData.currAngle])/np.pi
+                print(angles)
+                print(SPData.totCount)
+                print(SPData.homing)
+                lastPrint = time.perf_counter()
     except KeyboardInterrupt:
         #Set motor speeds to zero & close serial.
         localMu.write(f"{['0|0|0'] * lenData}\n".encode(encAlg))

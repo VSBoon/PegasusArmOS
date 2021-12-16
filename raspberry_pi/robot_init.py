@@ -59,12 +59,12 @@ S4 = np.array([1,0,0,0,0.585,0.016])
 """Lower- and upper limits of each (virtual) joint from the home
 position."""
 lims0 = [-0.945*np.pi, 0.945*np.pi] #+/- 170 deg
-lims1 = [-0.25*np.pi, 0.5*np.pi] #-45 deg, + 90 deg
-lims2 = [-np.pi, 0.25*np.pi] #-180 deg, + 45 deg.
-lims3 = [-np.pi, 0.25*np.pi] #-180 deg, +45 deg.
+lims1 = [-0.45*np.pi, 0.45*np.pi] #-45 deg, + 90 deg
+lims2 = [-0.45*np.pi, 0.45*np.pi] #-180 deg, + 45 deg.
+lims3 = [-0.45*np.pi, 0.45*np.pi] #-180 deg, +45 deg.
 lims4 = [-np.pi, np.pi] #+/- 180 deg.
 
-gearRatioList = [19.7*50, 19.7*50, (65.5*20)/9, (65.5*20)/9, (127.7*32)/9]
+gearRatioList = [19.7*25, 19.7*25, 127.7*32/9, (65.5*20)/9, (65.5*20)/9]
 cpr = 512 #Encoder counts per revolution of the initial motor shaft.
 
 """Link-class objects for each link"""
