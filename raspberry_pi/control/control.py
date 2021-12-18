@@ -88,16 +88,15 @@ def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List
     timeScaling=5)
     print(f"Total estimated time for trajectory: {round(dt*traj[:,0].size, 2)} s")
     traj, velTraj, accTraj = TrajDerivatives(traj, method, robot, dt)
-    g = np.array([0,0,-9.81])
+    g = np.array([0,0,-9.81*2]) #EXPERIMENTAL!
     FTip = np.zeros(6) #Position control, --> assume no end-effector force.
     tauPID = np.zeros(traj[0,:].size)
     n = -1 #iterator
+    PWM = [0 for i in range(5)]
     startTime = time.perf_counter()
-    lastCheck = time.perf_counter()
     lastFrame = time.perf_counter()
     lastWrite = time.perf_counter()
     lastPID = time.perf_counter()
-
     print("Starting trajectory...")
     while time.perf_counter() - startTime < dt*traj[:,0].size: #Trajectory loop
         nPrev = n
@@ -106,32 +105,48 @@ def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List
             break
         if n != nPrev:
             tauFF = FeedForward(robot, traj[n], velTraj[n], accTraj[n], g, FTip)
+            #hacky fix, but works for now
+            tauFF[0] = [0 if velTraj[n,0] == 0 else tauFF[0]][0]
         if time.perf_counter() - lastPID >= dtPID:
-            thetaCurr = serial.currAngle[:-1] #Exclude gripper data
+            thetaCurr = np.array(serial.currAngle[:-1]) #Exclude gripper data
+            thetaPrev = np.array(serial.prevAngle[:-1])
+            dthetaCurr = (thetaCurr - thetaPrev)/dtPID
             tauPID = PIDObj.Execute(traj[n], thetaCurr, dtPID)
             lastPID = time.perf_counter()
-        
-        tau = tauFF + tauPID
-        I = [Tau2Curr(tau[i], robot.joints[i].gearRatio, robot.joints[i].km, 
-                      currLim=2) for i in range(len(robot.joints))]
-        #TODO: Confirm conversion factor I --> PWM
-        PWM = [round(Curr2MSpeed(current)) for current in I]
-        serial.mSpeed[:-1] = PWM
-        #TODO: Add current / PWM for gripper
-
-        #Take care of communication on an interval basis:
-        lastCheck = SReadAndParse(serial, lastCheck, dtComm, localMu)[0]
+            tau = tauFF + tauPID
+            tauFric = np.zeros(5)
+            for i in range(tau.size):
+                """Compute joint friction based on friction model of joint."""
+                if not np.isclose(tauPID[i], 0, atol=1e-05) and np.isclose(dthetaCurr[i], 0, atol=1e-01):
+                    tauStat = robot.joints[i].fricPar['stat']
+                    tauFric[i] = tauStat*np.sign(tau[i])
+                elif np.isclose(tauPID[i], 0, atol=1e-05) and not np.isclose(dthetaCurr[i],0,atol=1e-01):
+                    tauKin = robot.joints[i].fricPar['kin']
+                    tauFric[i] = tauKin*np.sign(tau[i]) 
+            tau += tauFric
+            #Diff-drive properties:
+            tauJ4 = tau[3]
+            tauJ5 = tau[4]
+            tau[3] = (-tauJ4*1.1 - tauJ5) #This motor struggle more than the other
+            tau[4] = tauJ4 - tauJ5
+            # I = [Tau2Curr(tau[i], robot.joints[i].gearRatio, robot.joints[i].km, 
+            #               currLim=2) for i in range(len(robot.joints))]
+            PWM = tau*33.78 #EXPERIMENTAL
+            PWM = np.round(LimDamping(thetaCurr, PWM, robot.limList, k=20))
+            #Take care of communication on an interval basis:
         if (time.perf_counter() - lastWrite >= dtComm):
-            serial.rotDirDes = [np.sign(velTraj[n,i]) if 
-                                np.sign(velTraj[n,i]) == 1 else 0 for i in 
+            SReadAndParse(serial, localMu)
+            serial.mSpeed[:-1] = [abs(val) for val in PWM]
+            serial.rotDirDes = [np.sign(PWM[i]) if 
+                                np.sign(PWM[i]) == 1 else 0 for i in 
                                 range(serial.lenData-1)]
             for i in range(serial.lenData-1): #TODO: Add Gripper function
-                serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
+                serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
                                     f"{serial.rotDirDes[i]}"
-                #TODO: Replace last entry w/ gripper commands
-                serial.dataOut[-1] = f"{0|0}"
-                localMu.write(f"{serial.dataOut}\n".encode('utf-8')) 
-                lastWrite = time.perf_counter()
+            #TODO: Replace last entry w/ gripper commands
+            serial.dataOut[-1] = f"{0|0}"
+            localMu.write(f"{serial.dataOut}\n".encode('utf-8')) 
+            lastWrite = time.perf_counter()
         #Take care of PyGame screen on an interval basis:
         now = time.perf_counter()
         if now - lastFrame >= dtFrame:
@@ -188,7 +203,7 @@ def VelControl(robot: Robot, serial: SerialData, vel:
                    -storage.
     :param vel: Desired velocity, either as an end-effector twist or a
                 list/array of joint velocities.
-    :param dthetaPrev: Array of previous velocity.
+    :param dthetaPrev: Array of previous actual velocity.
     :param dt: Time between this control loop and the previous in [s].
     :param method: 'twist' if the velocity is a twist, 'joint' for a 
                    list/array of joint velocities.
@@ -213,8 +228,9 @@ def VelControl(robot: Robot, serial: SerialData, vel:
     else:
         raise InputError("Invalid method. Choose between 'joint'" +
                          "and 'twist'.")
-    #Add 'directional limit damping' (k might need tweaking):
-    dtheta = LimDamping(theta, dtheta, robot.limList, k=20) 
+    #Pegasus characteristics: Move with the previous joint
+    dtheta[2] += dtheta[1]
+    dtheta[3] += dtheta[2]
     ddtheta = (dtheta - dthetaPrev)/dt
     dthetaCurr = (np.array(serial.currAngle[:-1]) - 
                   np.array(serial.prevAngle[:-1]))/dtComm
@@ -223,13 +239,21 @@ def VelControl(robot: Robot, serial: SerialData, vel:
     tauFF = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
     tauPID = PIDObj.Execute(dtheta, dthetaCurr, dt)
     tau = tauFF + tauPID
+    #Diff-drive properties:
+    tauJ4 = tau[3]
+    tauJ5 = tau[4]
+    tau[3] = -tauJ4 - tauJ5
+    tau[4] = tauJ4 - tauJ5
     I = [Tau2Curr(tau[i], robot.joints[i].gearRatio, robot.joints[i].km, 
                   currLim=2) for i in range(len(robot.joints))]
     #TODO: Confirm conversion factor I --> PWM
-    PWM = [round(Curr2MSpeed(current)) for current in I]
+    PWM = [Curr2MSpeed(current) for current in I]
+    #Add 'directional limit damping' (k might need tweaking):
+    PWM = LimDamping(theta, PWM, robot.limList, k=20)
+    PWM = [round(val) for val in PWM]
     serial.mSpeed[:-1] = PWM
     #TODO: Add current / PWM for gripper
-    return dtheta
+    return dthetaCurr
 
     
 def ForceControl(robot: Robot, serial: SerialData,
@@ -269,6 +293,11 @@ def ForceControl(robot: Robot, serial: SerialData,
     moving / accelerating when it is not pushing against anything."""
     FTip -= np.dot(kDamping,twist)
     tau = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
+    #Diff-drive properties:
+    tauJ4 = tau[3]
+    tauJ5 = tau[4]
+    tau[3] = -tauJ4 - tauJ5
+    tau[4] = tauJ4 - tauJ5
     I = [Tau2Curr(tau[i], robot.joints[i].gearRatio, robot.joints[i].km, 
                   currLim=2) for i in range(len(robot.joints))]
     #TODO: Confirm conversion factor I --> PWM
@@ -334,6 +363,11 @@ def ImpControl(robot: Robot, serial: SerialData, TDes: np.ndarray,
     tauFF = FeedForward(robot, theta, dtheta, ddtheta, g, FTip)
     tauPID = np.zeros(len(tauFF)) #Remove if experimental PID is uncommented
     tau = tauFF + tauPID
+    #Diff-drive properties:
+    tauJ4 = tau[3]
+    tauJ5 = tau[4]
+    tau[3] = -tauJ4 - tauJ5
+    tau[4] = tauJ4 - tauJ5
     I = [Tau2Curr(tau[i], robot.joints[i].gearRatio, robot.joints[i].km, 
                   currLim=2) for i in range(len(robot.joints))]
     #TODO: Confirm conversion factor I --> PWM

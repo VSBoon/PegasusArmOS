@@ -10,15 +10,17 @@ print("\n\n--- Welcome to the PegasusArm OS v1.0.0 User Interface ---\n\n")
 print("Importing modules...\n")
 import numpy as np
 import modern_robotics as mr
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 import pygame
+import serial
 import time
 import csv
 from typing import List, Tuple, Dict
-from robot_init import robot, robotFric
+from robot_init import robot as R1 
+from robot_init import robotFric as R2
 from settings import sett
 from classes import SerialData, Robot, InputError, PID
-from util import Tau2Curr, Curr2MSpeed
+from util import LimDamping
 from kinematics.kinematic_funcs import FKSpace
 from serial_comm.serial_comm import FindSerial, StartComms, GetComms, SReadAndParse
 from dynamics.dynamics_funcs import FeedForward
@@ -51,8 +53,8 @@ def GetEConfig(sConfig: np.ndarray, Pegasus: Robot) -> np.ndarray:
         return sConfig, eConfig
     elif userInput[0] == "[":
         userInput = userInput[1:-1]
-        list = [float(item)*np.pi for item in userInput.split(',')]
-        eConfig = np.array(list)
+        listE = [float(item)*np.pi for item in userInput.split(',')]
+        eConfig = np.array(listE)
         if eConfig.shape != sConfig.shape:
             raise InputError("Start- and end configuration are not the same "+
                              "shape.")
@@ -238,347 +240,394 @@ def GetKeysEF(VPrev: np.ndarray, events: List["pygame.Event"], keyDownPrev: \
                 print(f"angular velocity: {wSel} rad/s")
     return keyDown, noInput, wSel, vSel, V
 
-def HoldPos(serial: SerialData, robot: Robot, PIDObj: PID, 
-            thetaDes: np.ndarray, dtHold: float):
-    thetaCurr = np.array(serial.currAngle[-1]) #Minus gripper
-    dThetaDes = np.array([0 for angle in thetaDes])
-    ddThetaDes = np.array([0 for angle in thetaDes])
+def HoldPos(serial: SerialData, Teensy: serial.Serial, robot: Robot, PIDObj: PID, 
+            thetaDes: np.ndarray, lastComm: float, lastFrame: float, 
+            dtComm: float, dtFrame: float, dtHold: float, screen: pygame.Surface, background: pygame.Surface, eLim: float=np.ones(5)*0.017) -> \
+            Tuple[float]:
+    """Execute one step to hold a desired position, using FF and PID
+    :param serial: SerialData object for data transmission.
+    :param robot: Robot object to store robot data / model.
+    :param PIDObj: PID-class object for position PID.
+    :param thetaDes: Desired joint space configuration in [rad].
+    :param lastComm: Last time communication was executed.
+    :param lastFrame: Last time pygame was refreshed.
+    :param dtComm: Time between communication updates in [s].
+    :param dtFrame: Time between pygame updates in [s].
+    :param eLim: Maximal acceptable error magnitude.
+    """
+    thetaCurr = np.array(serial.currAngle[:-1]) #Minus gripper
+    thetaPrev = np.array(serial.prevAngle[:-1])
+    dthetaCurr = (thetaCurr - thetaPrev)/dtHold
     FTip = np.array([0 for i in range(6)])
     g = np.array([0,0,-9.81])
-    tauFF = FeedForward(robot, thetaDes, dThetaDes, ddThetaDes, g, FTip)
+    tauFF = FeedForward(robot, thetaDes, np.zeros(5), np.zeros(5), g, FTip)
     tauPID = PIDObj.Execute(thetaDes, thetaCurr, dtHold)
-    tauComm = tauFF + tauPID
-    I = [Tau2Curr(tauComm[i], robot.joints[i].gearRatio, 
-                  robot.joints[i].km, 2) for i in range(len(robot.joints))]
-    PWM = [Curr2MSpeed(current) for current in I]
-    return PWM
+    for i in range(thetaCurr.size):
+        if abs(thetaCurr[i] - thetaDes[i]) < eLim[i]:
+            tauPID[i] = 0
+    tau = tauFF + tauPID
+    tauFric = np.zeros(5)
+    for i in range(tau.size):
+        """Compute joint friction based on friction model of joint."""
+        if not np.isclose(tauPID[i], 0, atol=1e-05) and np.isclose(dthetaCurr[i], 0, atol=1e-01):
+            tauStat = robot.joints[i].fricPar['stat']
+            tauFric[i] = tauStat*np.sign(tau[i])
+        elif np.isclose(tauPID[i], 0, atol=1e-05) and not np.isclose(dthetaCurr[i],0,atol=1e-01):
+            tauKin = robot.joints[i].fricPar['kin']
+            tauFric[i] = tauKin*np.sign(tau[i]) 
+    tau += tauFric
+    #Diff-drive properties:
+    tauJ4 = tau[3]
+    tauJ5 = tau[4]
+    tau[3] = (-tauJ4*1.1 - tauJ5) #This motor struggle more than the other
+    tau[4] = tauJ4 - tauJ5
+    PWM = tau*33.78
+    PWM = np.round(LimDamping(thetaCurr, PWM, robot.limList, k=20))
 
-robotSelected = False
-while not robotSelected:
-    try:
-        robotType = input("Please select the robot model type.\n" +\
-            "For a model with friction, enter 0.\nFor a robot " +\
-            "without friction, enter 1.\n")
-        if robotType == "0":
-            Pegasus = robotFric
-            robotSelected = True
-        if robotType == "1":
-            Pegasus = robot
-            robotSelected = True
-        else:
-            print("Invalid entry. Enter either '0' or '1'-0")
-            raise InputError() 
-    except InputError:
-        continue
-print("\nRobot type selected. Setting up serial communication...\n")
-serial = SerialData(6, Pegasus.joints)
-port = FindSerial(askInput=True)[0]
-Teensy = StartComms(port)
+    if time.perf_counter() - lastComm >= dtComm:
+        SReadAndParse(serial, Teensy)
+        serial.mSpeed[:-1] = [abs(val) for val in PWM]
+        serial.rotDirDes = [np.sign(PWM[i]) if 
+                            np.sign(PWM[i]) == 1 else 0 for i in 
+                            range(serial.lenData-1)]
+        for i in range(serial.lenData-1): #TODO: Add Gripper function
+            serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
+                                f"{serial.rotDirDes[i]}"
+        print(f"HoldPos: {serial.dataOut}")
+        #TODO: Replace last entry w/ gripper commands
+        serial.dataOut[-1] = f"{0|0}"
+        Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
+        lastComm = time.perf_counter()
 
-method = False
-frameInterval = sett['dtFrame']
-lastFrame = time.perf_counter()
-dtPID = sett['dtPID']
-lastPID = time.perf_counter()
-dtComm = sett['dtComm']
-lastComm = time.perf_counter()
-lastCheck = time.perf_counter()
-dtFrame = sett['dtFrame']
-lastHold = time.perf_counter()
-dtHold = sett['dtHold']
+    if time.perf_counter() - lastFrame >= dtFrame:
+        events = pygame.event.get() #To interact with pygame, avoids freezing.
+        for event in events:
+            if event.type == pygame.QUIT:
+                raise KeyboardInterrupt
+        screen.blit(background, (0,0))
+        pygame.display.update()
+        lastFrame = time.perf_counter()
+    return lastComm, lastFrame
 
-PIDObj = sett['PID']
-errThetaMax = sett['errThetaHold']
-vMax = sett['vMax']
-wMax = sett['wMax']
-jIncr = sett['jIncr']
-efIncrL = sett['eIncrLin']
-efIncrR = sett['eIncrRot']
-dtPosConf = sett['dtPosConfig']
-forceDamp = sett['forceDamp']
-M = sett['M']
-B = sett['B']
-Kx = sett['Kx']
-Ka = sett['Ka']
-
-#initialize empty objects
-wDesJ = np.zeros(5)
-vDesE = np.zeros(6)
-vPrevJ = np.zeros(5)
-wSelJ = jIncr
-wSelE = efIncrR
-vSelE = efIncrL
-pressed = dict()
-noInput = True
-noInputPrev = False
-VPrev= np.zeros(6)
-dthetaPrev = np.zeros(5)
-
-methodSelected = False
-while not methodSelected:
-    try:
-        method = input("Please enter a control method.\nFor position " +\
-                    "control, type 'pos'.\nFor velocity control, " +\
-                    "type 'vel'.\nFor force control, type 'force'.\n"+\
-                    "For impedance control, type 'imp'.\n")
-        if method != 'pos' and method != 'vel' and \
-        method != 'force' and method != 'imp':
-            print("Invalid method. Try again.")
-            raise InputError()
-        else:
-            methodSelected = True
-    except InputError:
-        continue
-
-if method == 'vel':
-    spaceSelected = False
-    while not spaceSelected:
+if __name__ == "__main__":
+    robotSelected = False
+    while not robotSelected:
         try:
-            space = input("To perform joint velocity control, type "+
-                            "'joint'.\nFor end-effector velocity control, "+
-                            "type 'end-effector'.\n")
-            if space != 'joint' and space != 'end-effector':
-                raise InputError()
+            robotType = input("Please select the robot model type. --HIGHLY EXPERIMENTAL. NOT ADVISED\n" +\
+                "For a model with friction, enter 0.\nFor a robot " +\
+                "without friction, enter 1. -- ADVISED\n")
+            if robotType == "0":
+                Pegasus = R2
+                robotSelected = True
+            if robotType == "1":
+                Pegasus = R1
+                robotSelected = True
             else:
-                spaceSelected = True
+                print("Invalid entry. Enter either '0' or '1'-0")
+                raise InputError() 
         except InputError:
             continue
-elif method == 'force':
-    pathSelected = False
-    while not pathSelected:
-        path = input("Please input the path to the CSV file with " +
-                     "the desired end-effector wrenches over time\n")
-        path = os.path.join(current, path)
+    print("\nRobot type selected. Setting up serial communication...\n")
+    serial = SerialData(6, Pegasus.joints)
+    #port = FindSerial(askInput=True)[0]
+    Teensy = StartComms('COM13') #TEMPORARY, REPLACE WITH PORT
+
+    method = False
+    frameInterval = sett['dtFrame']
+    lastFrame = time.perf_counter()
+    dtPID = sett['dtPID']
+    lastPID = time.perf_counter()
+    dtComm = sett['dtComm']
+    lastComm = time.perf_counter()
+    lastCheck = time.perf_counter()
+    dtFrame = sett['dtFrame']
+    lastHold = time.perf_counter()
+    dtHold = sett['dtHold']
+
+    PIDPos = sett['PIDP']
+    PIDVel = sett['PIDV']
+    errThetaMax = np.ones(5)*sett['errThetaHold']
+    vMax = sett['vMax']
+    wMax = sett['wMax']
+    jIncr = sett['jIncr']
+    efIncrL = sett['eIncrLin']
+    efIncrR = sett['eIncrRot']
+    dtPosConf = sett['dtPosConfig']
+    forceDamp = sett['forceDamp']
+    M = sett['M']
+    B = sett['B']
+    Kx = sett['Kx']
+    Ka = sett['Ka']
+
+    #initialize empty objects
+    wDesJ = np.zeros(5)
+    vDesE = np.zeros(6)
+    vPrevJ = np.zeros(5)
+    wSelJ = jIncr
+    wSelE = efIncrR
+    vSelE = efIncrL
+    noInput = True
+    noInputPrev = False
+    VPrev= np.zeros(6)
+    dthetaPrev = np.zeros(5)
+
+    methodSelected = False
+    while not methodSelected:
         try:
-            with open(path) as csvFile:
-                csvRead = csv.reader(csvFile, delimiter=';')
-                wrenchesList = []
-                for wrenchCSV in csvRead:
-                    wrenchRow = [float(val.replace(',','.')) for val in wrenchCSV]
-                    wrenchesList.append(np.array(wrenchRow))
-            pathSelected = True
-        except FileNotFoundError:
-            print("Incorrect path.")
+            method = input("Please enter a control method.\nFor position " +\
+                        "control, type 'pos'.\nFor velocity control, " +\
+                        "type 'vel'. --UNTESTED, UNRELIABLE!\nFor force control, type 'force'. --UNTESTED, UNREALIABLE!\n"+\
+                        "For impedance control, type 'imp'. -- UNTESTED, UNRELIABLE!!\n")
+            if method != 'pos' and method != 'vel' and \
+            method != 'force' and method != 'imp':
+                print("Invalid method. Try again.")
+                raise InputError()
+            else:
+                methodSelected = True
+        except InputError:
             continue
-    dtKnown = False
-    while not dtKnown:
-        try:
-            dtWrench = float(input("Time between wrenches in the CSV file in [s]: "))
-            dtKnown = True
-        except ValueError:
-            print("Invalid input. Please input a time in [s].")
-elif method == 'imp':
-    #Get robot into desired position.
-    sConfig = np.array(serial.currAngle[:-1])
-    eConfig = GetEConfig(sConfig, Pegasus)[1]
-    if eConfig.shape != (4,4):
-        TDes = FKSpace(Pegasus.TsbHome, Pegasus.screwAxes, eConfig)
-    else:
-        TDes = eConfig
 
-print("\nSetting up UI...\n")
-pygame.init()
-screen = pygame.display.set_mode([700, 500])
-background = pygame.image.load(os.path.join(current,'control_overview.png'))
-if method == 'vel':
-    keyDownPrev = pygame.key.get_pressed()
-while True: #Main loop!
-    try:
-        if method == 'pos': #Position control
-            sConfig = np.array(serial.currAngle[:-1])
-            sConfig, eConfig = GetEConfig(sConfig, robot)
+    if method == 'vel':
+        spaceSelected = False
+        while not spaceSelected:
             try:
-                PosControl(sConfig, eConfig, Pegasus, serial, dtPosConf, 
-                           vMax, wMax, PIDObj, dtComm, dtPID, dtFrame, Teensy, screen, background)
-            except SyntaxError as e:
-                print(e.msg)
+                space = input("To perform joint velocity control, type "+
+                                "'joint'.\nFor end-effector velocity control, "+
+                                "type 'end-effector'.\n")
+                if space != 'joint' and space != 'end-effector':
+                    raise InputError()
+                else:
+                    spaceSelected = True
+            except InputError:
                 continue
-            except ValueError as e:
-                print(e)
+    elif method == 'force':
+        pathSelected = False
+        while not pathSelected:
+            path = input("Please input the path to the CSV file with " +
+                        "the desired end-effector wrenches over time\n")
+            path = os.path.join(current, path)
+            try:
+                with open(path) as csvFile:
+                    csvRead = csv.reader(csvFile, delimiter=';')
+                    wrenchesList = []
+                    for wrenchCSV in csvRead:
+                        wrenchRow = [float(val.replace(',','.')) for val in wrenchCSV]
+                        wrenchesList.append(np.array(wrenchRow))
+                pathSelected = True
+            except FileNotFoundError:
+                print("Incorrect path.")
                 continue
-            #Initiate hold-pos
-            thetaDes = eConfig #exclude gripper
-            #Initialize with high value
-            errThetaCurr = np.array([100*np.pi for i in serial.currAngle[:-1]])
-            print("Stabilizing around new position...")
-            while all(np.greater(errThetaCurr, errThetaMax)):
-                if time.perf_counter() - lastHold >= dtHold: 
-            #While not stabilized within error bounds, do holdpos
-                    serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, thetaDes, 
-                                            dtHold)
-                    lastHold = time.perf_counter()
+        dtKnown = False
+        while not dtKnown:
+            try:
+                dtWrench = float(input("Time between wrenches in the CSV file in [s]: "))
+                dtKnown = True
+            except ValueError:
+                print("Invalid input. Please input a time in [s].")
+    elif method == 'imp':
+        #Get robot into desired position.
+        sConfig = np.array(serial.currAngle[:-1])
+        eConfig = GetEConfig(sConfig, Pegasus)[1]
+        if eConfig.shape != (4,4):
+            TDes = FKSpace(Pegasus.TsbHome, Pegasus.screwAxes, eConfig)
+        else:
+            TDes = eConfig
 
-                lastCheck = SReadAndParse(serial, lastCheck, dtComm, Teensy)[0]
+    print("\nSetting up UI...\n")
+    pygame.init()
+    screen = pygame.display.set_mode([700, 500])
+    background = pygame.image.load(os.path.join(current,'control_overview.png'))
+    if method == 'vel':
+        keyDownPrev = pygame.key.get_pressed()
+    try:
+        while True: #Main loop!
+            if method == 'pos': #Position control
+                sConfig = np.array(serial.currAngle[:-1])
+                sConfig, eConfig = GetEConfig(sConfig, Pegasus)
+                try:
+                    PosControl(sConfig, eConfig, Pegasus, serial, dtPosConf, 
+                                vMax, wMax, PIDPos, dtComm, dtPID, dtFrame, Teensy, screen, background)
+                except SyntaxError as e:
+                    print(e.msg)
+                    continue
+                except ValueError as e:
+                    print(e)
+                    continue
+                #Initiate hold-pos
+                thetaDes = eConfig #exclude gripper
+                #Initialize with high value
+                errThetaCurr = np.array([100*np.pi for i in serial.currAngle[:-1]])
+                print("Stabilizing around new position...")
+                #Last argument to let play out the effects of transience
+                start = time.perf_counter()
+                while any(np.greater(errThetaCurr, errThetaMax)):
+                    if time.perf_counter() - lastHold >= dtHold: 
+                #While not stabilized within error bounds, do holdpos
+                        lastComm, lastFrame = HoldPos(serial, Teensy, Pegasus, 
+                                              PIDPos, thetaDes, lastComm, 
+                                              lastFrame, dtComm, dtFrame,
+                                              dtHold, screen, background)
+                        lastHold = time.perf_counter()
+                        errThetaCurr = (thetaDes - np.array([serial.currAngle[:-1]]))[0]
+                print("Stabilization complete.")
+
+            elif method == 'vel': #Velocity Control
+                if space == 'joint':
+                    if time.perf_counter() - lastPID > dtPID:
+                        if noInput and not any(keyDownPrev) and not np.any(wDesJ):
+                            if noInput != noInputPrev:
+                                #Initiate PID
+                                PIDPos.Reset()
+                                thetaDes = np.array(serial.currAngle[:-1])
+                                thetaDes[3] += thetaDes[2] #Pegasus Characteristics
+                                thetaDes[2] += thetaDes[1]
+                            serial.mSpeed[:-1] = HoldPos(serial, Pegasus, PIDPos, 
+                                                            thetaDes, dtPID)
+                        else:
+                        #VelControl implicitely updates serial.mSpeed (FF+PID).
+                            vPrevJ = VelControl(Pegasus, serial, wDesJ, vPrevJ, 
+                                                dtPID, 'joint', dtComm, PIDVel)
+                        lastPID = time.perf_counter()
+
+                    if time.perf_counter() - lastFrame >= dtFrame:
+                        events = pygame.event.get()
+                        for event in events:
+                            if event.type == pygame.QUIT:
+                                raise KeyboardInterrupt
+                        noInputPrev = noInput
+                        wDesPrev = wDesJ
+                        keyDownPrev, noInput, wSelJ, wDesJ = GetKeysJoint(keyDownPrev, events, wSelJ, wDesPrev, 0, wMax, jIncr)
+                        screen.blit(background, (0,0))
+                        lastFrame = time.perf_counter()
+                        
+                elif space == 'end-effector':
+                    if time.perf_counter() - lastPID > dtPID:
+                        #VelControl implicitely updates serial.mSpeed.
+                        if noInput and not any(keyDownPrev):
+                            if noInput != noInputPrev:
+                                #Initiate PID
+                                PIDPos.Reset()
+                                thetaDes = np.array(serial.currAngle[:-1])
+                                thetacurr = np.array(serial.currAngle[:-1])
+                            serial.mSpeed[:-1] = HoldPos(serial, Pegasus, PIDPos, 
+                                                            thetaDes, dtPID)
+                        else:
+                            #FF & PID!
+                            vPrevJ = VelControl(Pegasus, serial, vDesE, vPrevJ, 
+                                                dtPID, 'twist', dtComm, PIDVel)
+                        lastPID = time.perf_counter()
+
+                    if time.perf_counter() - lastFrame >= dtFrame:
+                        noInputPrev = noInput
+                        events = pygame.event.get()
+                        for event in events:
+                            if event.type == pygame.QUIT:
+                                raise KeyboardInterrupt
+                        VPrev = vDesE
+                        keyDownPrev, noInput, wSel, vSel, vDesE = \
+                        GetKeysEF(VPrev, events, keyDownPrev, vSelE, wSelE, 0, 
+                                    wMax, 0, vMax, efIncrL, efIncrR)
+                        pygame.display.update()
+                        screen.blit(background, (0,0))
+                        lastFrame = time.perf_counter()
                 if (time.perf_counter() - lastComm >= dtComm):
-                    errThetaCurr = thetaDes - np.array(serial.currAngle[:-1])
-                    serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
-                                        speed in serial.mSpeed]
-                    for i in range(serial.lenData-1): 
-                        serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
-                                            f"{serial.rotDirDes[i]}"
-                    serial.dataOut[-1] = f"{0|0}"
-                    Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
-                    lastComm = time.perf_counter()
-            print("Stabilization complete.")
-            PIDObj.Reset()
-
-        elif method == 'vel': #Velocity Control
-            if space == 'joint':
-                if time.perf_counter() - lastPID > dtPID:
-                    if noInput and not any(list(pressed.values())):
-                        if noInput != noInputPrev:
-                            #Initiate PID
-                            PIDObj.Reset()
-                            thetaDes = np.array(serial.currAngle[:-1])
-                            thetacurr = np.array(serial.currAngle[:-1])
-                        serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, 
-                                                     thetaDes, dtPID)
-                    else:
-                    #VelControl implicitely updates serial.mSpeed (FF+PID).
-                        vPrevJ = VelControl(Pegasus, serial, wDesJ, vPrevJ, 
-                                            dtPID, 'joint', dtComm, PIDObj)
-                    lastPID = time.perf_counter()
-
-                if time.perf_counter() - lastFrame >= dtFrame:
-                    events = pygame.event.get()
-                    for event in events:
-                        if event.type == pygame.QUIT:
-                            raise KeyboardInterrupt
-                    noInputPrev = noInput
-                    wDesPrev = wDesJ
-                    keyDownPrev, noInput, wSelJ, wDesJ = GetKeysJoint(keyDownPrev, events, wSelJ, wDesPrev, 0, wMax, jIncr)
-                    print(wDesJ)
-                    screen.blit(background, (0,0))
-                    lastFrame = time.perf_counter()
-            elif space == 'end-effector':
-                if time.perf_counter() - lastPID > dtPID:
-                    #VelControl implicitely updates serial.mSpeed.
-                    if noInput and not any(list(pressed.values())):
-                        if noInput != noInputPrev:
-                            #Initiate PID
-                            PIDObj.Reset()
-                            thetaDes = np.array(serial.currAngle[:-1])
-                            thetacurr = np.array(serial.currAngle[:-1])
-                        serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, 
-                                                     thetaDes, dtPID)
-                    else:
-                        #FF & PID!
-                        vPrevJ = VelControl(Pegasus, serial, vDesE, vPrevJ, 
-                                            dtPID, 'twist', dtComm, PIDObj)
-                    lastPID = time.perf_counter()
-
-                if time.perf_counter() - lastFrame >= dtFrame:
-                    noInputPrev = noInput
-                    events = pygame.event.get()
-                    for event in events:
-                        if event.type == pygame.QUIT:
-                            raise KeyboardInterrupt
-                    VPrev = vDesE
-                    keyDownPrev, noInput, wSel, vSel, vDesE = \
-                    GetKeysEF(VPrev, events, keyDownPrev, vSelE, wSelE, 0, 
-                              wMax, 0, vMax, efIncrL, efIncrR)
-                    pygame.display.update()
-                    screen.blit(background, (0,0))
-                    lastFrame = time.perf_counter()
-
-            lastCheck = SReadAndParse(serial, lastCheck, dtComm, Teensy)[0]
-            if (time.perf_counter() - lastComm >= dtComm):
-                serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
-                                    speed in serial.mSpeed]
-                for i in range(serial.lenData-1): #TODO: Add Gripper function
-                    serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
-                                        f"{serial.rotDirDes[i]}"
-                    #TODO: Replace last entry w/ gripper commands
-                    serial.dataOut[-1] = f"{0|0}"
-                    Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
-                    lastComm = time.perf_counter()
-        
-        elif method == 'force': #Force control
-            n = -1 #iterator
-            startTime = time.perf_counter()
-            print(f"Expected total time: {dtWrench*len(wrenchesList)} s.")
-            while time.perf_counter() - startTime <= dtWrench*len(wrenchesList):
-                nPrev = n
-                n = round((time.perf_counter()-startTime)/dtWrench)
-                if n >= len(wrenchesList):
-                    print("finished!")
-                    #Initiate hold-pos
-                    thetaDes = np.array(serial.currAngle[:-1])
-                    errThetaCurr = np.array([100*np.pi for i in serial.currAngle[:-1]])
-                    print("Stabilizing around new position...")
-                    while all(np.greater(errThetaCurr, errThetaMax)):
-                        if time.perf_counter() - lastHold >= dtHold: 
-                    #While not stabilized within error bounds, do holdpos
-                            serial.mSpeed[:-1] = HoldPos(serial, robot, PIDObj, thetaDes, 
-                                                    dtHold)
-                            lastHold = time.perf_counter()
-                    
-                        lastCheck = SReadAndParse(serial, lastCheck, dtComm, Teensy)[0]
-                        if (time.perf_counter() - lastComm >= dtComm):
-                            errThetaCurr = thetaDes - np.array(serial.currAngle[:-1])
-                            serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
-                                                speed in serial.mSpeed]
-                            for i in range(serial.lenData-1): 
-                                serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
-                                                    f"{serial.rotDirDes[i]}"
-                            serial.dataOut[-1] = f"{0|0}"
-                            Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
-                            lastComm = time.perf_counter()
-                    print("Stabilization complete.")
-                    PIDObj.Reset()
-                    raise KeyboardInterrupt
-                if n != nPrev:
-                    ForceControl(Pegasus, serial, wrenchesList[n], forceDamp, dtWrench)
-                
-                if time.perf_counter() - lastFrame >= dtFrame:
-                            events = pygame.event.get() #avoids freezing.
-                            for event in events:
-                                if event.type == pygame.QUIT:
-                                    raise KeyboardInterrupt
-                            screen.blit(background, (0,0))
-                            pygame.display.update()
-                            lastFrame = time.perf_counter()
-
-                lastCheck = SReadAndParse(serial, lastCheck, dtComm, Teensy)[0]
-                if (time.perf_counter() - lastComm >= dtComm):
+                    SReadAndParse(serial, Teensy)
                     serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
                                         speed in serial.mSpeed]
                     for i in range(serial.lenData-1): #TODO: Add Gripper function
-                        serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
+                        serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
                                             f"{serial.rotDirDes[i]}"
-                        #TODO: Replace last entry w/ gripper commands
-                        serial.dataOut[-1] = f"{0|0}"
-                        Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
-                        lastComm = time.perf_counter()
-        
-        elif method == 'imp': #Impedance control
-            if time.perf_counter() - lastPID > dtPID:
-                VPrev, dthetaPrev = ImpControl(Pegasus, serial, TDes, VPrev, dthetaPrev, dtPID, M, B, Kx, Ka, PIDObj)
-            if time.perf_counter() - lastFrame >= dtFrame:
-                events = pygame.event.get() #avoids freezing.
-                for event in events:
-                    if event.type == pygame.QUIT:
-                        raise KeyboardInterrupt
-                screen.blit(background, (0,0))
-                pygame.display.update()
-                lastFrame = time.perf_counter()
+                    #TODO: Replace last entry w/ 
+                    # gripper commands
+                    serial.dataOut[-1] = f"{0}|{0}"
+                    Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
+                    lastComm = time.perf_counter()
+            
+            elif method == 'force': #Force control
+                n = -1 #iterator
+                startTime = time.perf_counter()
+                print(f"Expected total time: {dtWrench*len(wrenchesList)} s.")
+                while time.perf_counter() - startTime <= dtWrench*len(wrenchesList):
+                    nPrev = n
+                    n = round((time.perf_counter()-startTime)/dtWrench)
+                    if n >= len(wrenchesList):
+                        print("finished!")
+                        #Initiate hold-pos
+                        thetaDes = np.array(serial.currAngle[:-1])
+                        errThetaCurr = np.array([100*np.pi for i in serial.currAngle[:-1]])
+                        print("Stabilizing around new position...")
+                        while all(np.greater(errThetaCurr, errThetaMax)):
+                            if time.perf_counter() - lastHold >= dtHold: 
+                        #While not stabilized within error bounds, do holdpos
+                                serial.mSpeed[:-1] = HoldPos(serial, Pegasus, PIDPos, thetaDes, 
+                                                        dtHold)
+                                lastHold = time.perf_counter()
 
-            lastCheck = SReadAndParse(serial, lastCheck, dtComm, Teensy)[0]
-            if (time.perf_counter() - lastComm >= dtComm):
-                serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
-                                    speed in serial.mSpeed]
-                for i in range(serial.lenData-1): #TODO: Add Gripper function
-                    serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
-                                        f"{serial.rotDirDes[i]}"
+                            if (time.perf_counter() - lastComm >= dtComm):
+                                SReadAndParse(serial, Teensy)
+                                errThetaCurr = thetaDes - np.array(serial.currAngle[:-1])
+                                serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
+                                                    speed in serial.mSpeed]
+                                for i in range(serial.lenData-1): 
+                                    serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
+                                                        f"{serial.rotDirDes[i]}"
+                                serial.dataOut[-1] = f"{0|0}"
+                                Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
+                                lastComm = time.perf_counter()
+                        print("Stabilization complete.")
+                        PIDPos.Reset()
+                        raise KeyboardInterrupt
+                    if n != nPrev:
+                        ForceControl(Pegasus, serial, wrenchesList[n], forceDamp, dtWrench)
+                    
+                    if time.perf_counter() - lastFrame >= dtFrame:
+                                events = pygame.event.get() #avoids freezing.
+                                for event in events:
+                                    if event.type == pygame.QUIT:
+                                        raise KeyboardInterrupt
+                                screen.blit(background, (0,0))
+                                pygame.display.update()
+                                lastFrame = time.perf_counter()
+
+                    if (time.perf_counter() - lastComm >= dtComm):
+                        SReadAndParse(serial, Teensy)
+                        serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
+                                            speed in serial.mSpeed]
+                        for i in range(serial.lenData-1): #TODO: Add Gripper function
+                            serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
+                                                f"{serial.rotDirDes[i]}"
+                            #TODO: Replace last entry w/ gripper commands
+                            serial.dataOut[-1] = f"{0|0}"
+                            Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
+                            lastComm = time.perf_counter()
+            
+            elif method == 'imp': #Impedance control
+                if time.perf_counter() - lastPID > dtPID:
+                    VPrev, dthetaPrev = ImpControl(Pegasus, serial, TDes, VPrev, dthetaPrev, dtPID, M, B, Kx, Ka, PIDPos)
+                if time.perf_counter() - lastFrame >= dtFrame:
+                    events = pygame.event.get() #avoids freezing.
+                    for event in events:
+                        if event.type == pygame.QUIT:
+                            raise KeyboardInterrupt
+                    screen.blit(background, (0,0))
+                    pygame.display.update()
+                    lastFrame = time.perf_counter()
+
+                if (time.perf_counter() - lastComm >= dtComm):
+                    SReadAndParse(serial, Teensy)
+                    serial.rotDirDes = [1 if np.sign(speed) == 1 else 0 for 
+                                        speed in serial.mSpeed]
+                    for i in range(serial.lenData-1): #TODO: Add Gripper function
+                        serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
+                                            f"{serial.rotDirDes[i]}"
                     #TODO: Replace last entry w/ gripper commands
                     serial.dataOut[-1] = f"{0|0}"
                     Teensy.write(f"{serial.dataOut}\n".encode('utf-8')) 
                     lastComm = time.perf_counter()
-    except KeyboardInterrupt:
-        print("Ctrl+C pressed, Quitting...") 
+    finally:
+        print("Quitting...") 
         #Set motor speeds to zero & close serial.
         Teensy.write(f"{['0|0'] * serial.lenData}\n".encode("utf-8"))
         time.sleep(dtComm)
         Teensy.__del__()
-        break
 

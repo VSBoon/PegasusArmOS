@@ -267,7 +267,7 @@ class SerialData():
 
     
     def GetDir(self):
-        """Gives the desired direction of rotation
+        """Gives the desired direction of rotation.
         """
         for i in range(self.lenData):
             if self.currAngle[i] <= self.desAngle[i] and \
@@ -296,18 +296,18 @@ class SerialData():
 class PID():
     """Data storage class for PID information & execution of PID loops.
     """
-    def __init__(self, kP: float, kI: float, kD: float, ILim: np.ndarray):
+    def __init__(self, kP: np.ndarray, kI: np.ndarray, kD: np.ndarray, ILim: np.ndarray):
         """Constructor for PID object.
-        :param kP: Proportional gain term.
-        :param kI: Integral gain term.
-        :param kD: Differential gain term.
+        :param kP: Proportional gain term matrix.
+        :param kI: Integral gain term matrix.
+        :param kD: Differential gain term matrix.
         NOTE: To omit P-, I-, or D action, input kX = 0
         :param ILim: Limit to integral gain for anti-integral windup.
         """
         n = ILim.size
-        self.kP = kP*np.eye(n)
-        self.kI = kI*np.eye(n)
-        self.kD = kD*np.eye(n)
+        self.kP = kP
+        self.kI = kI
+        self.kD = kD
         self.termI = np.zeros(n)
         self.ILim = ILim
         self.errPrev = np.zeros(n)
@@ -352,7 +352,6 @@ class PID():
         n = self.ILim.size
         self.errPrev = np.zeros(n)
         self.termI = np.zeros(n)
-
 ### ERROR CLASSES
 class IKAlgorithmError(BaseException):
     """Custom error class for when the inverse kinematics algorithm is 
