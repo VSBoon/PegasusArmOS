@@ -267,7 +267,7 @@ class SerialData():
 
     
     def GetDir(self):
-        """Gives the desired direction of rotation
+        """Gives the desired direction of rotation.
         """
         for i in range(self.lenData):
             if self.currAngle[i] <= self.desAngle[i] and \
@@ -352,7 +352,6 @@ class PID():
         n = self.ILim.size
         self.errPrev = np.zeros(n)
         self.termI = np.zeros(n)
-
 ### ERROR CLASSES
 class IKAlgorithmError(BaseException):
     """Custom error class for when the inverse kinematics algorithm is 
