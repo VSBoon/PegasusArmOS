@@ -81,7 +81,6 @@ def JointTrajLims(thetaStart: Union[List, np.ndarray], thetaEnd:
         else:
             #Take the short path
             thetaEnd[i] = end+short
-        thetaStart[i] = start
     traj = mr.JointTrajectory(thetaStart, thetaEnd, Tf, N, method)
     return traj
 
