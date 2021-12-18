@@ -85,26 +85,27 @@ def GetComms(localMu: serial.Serial, encAlg: str = "utf-8") -> str:
     Output:
     "This is an example of information sent over the serial port."
     """
-    dataIn = localMu.readline().decode(encAlg).rstrip() #remove decoding
-    if(not dataIn):
-        raise InputError("No string read.")
-    elif(dataIn[0] != "["):
-        raise InputError("Invalid start marker")
+    # dataIn = localMu.readline().decode(encAlg).rstrip() #remove decoding
+    # if(not dataIn):
+    #     raise InputError("No string read.")
+    # elif(dataIn[0] != "["):
+    #     raise InputError("Invalid start marker")
+    # return dataIn
+    #EXPERIMENTAL!
+    dataIn = localMu.read(localMu.inWaiting()).decode(encAlg)
+    if '\n' in dataIn:
+        lines = dataIn.split('\r\n')
+        dataIn = lines[-2]
     return dataIn
 
-def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
-                  localMu: serial.Serial, encAlg: str = "utf-8") \
-                  -> Tuple[float, bool]:
+def SReadAndParse(SPData: SerialData,  localMu: serial.Serial, 
+                  encAlg: str = "utf-8") -> Tuple[float, bool]:
     """Serial read function which parses data into SerialData object.
     :param SPData: SerialData instance, stores & parses serial data.
-    :param lastCheckOld: time.perf_counter() value representing last time 
-                         data was parsed.
     :param dtComm: Desired minimal time between communication loops.
     :param localMu: serial.Serial() instance representing the serial
                     communication with the local microcontroller.
     :param encAlg: Algorithm used to encode data into bytes for serial.
-    :return lastCheck: time.perf_counter() value representing last time
-                       data was parsed.
     :return controlBool: Boolean indicating if control can be done on 
                          new data.
     
@@ -116,45 +117,39 @@ def SReadAndParse(SPData: SerialData, lastCheckOld: float, dtComm: float,
     maxDeltaAngles = [np.pi for i in range(lenData)]
     tolAngle = [0.04*np.pi for i in range(lenData)]
     SPData = SerialData(lenData, cprList, desAngles, maxDeltaAngles, tolAngle)
-    dtComm = 0.005
     localMu = StartComms("COM9", baudRate)
     encAlg = "utf-8"
-    lastCheckOld = time.perf_counter()
 
     Example output:
-    1634299822.1247501, True
+    True
     """
     controlBool = True
-    lastCheck = time.perf_counter()
-    elapsedTime = time.perf_counter() - lastCheckOld
-    if elapsedTime >= dtComm:
-        if localMu.inWaiting() == 0:
-            return lastCheck, controlBool
-        elif localMu.inWaiting() > 0:
-            try:
-                dataIn = GetComms(localMu, encAlg)
-            except InputError as e:
-                controlBool = False
-                print(str(e))
-                localMu.reset_input_buffer()
-                return lastCheck, controlBool
-            except UnicodeDecodeError as e:
-                controlBool = False
-                localMu.reset_input_buffer()
-                return lastCheck, controlBool
-            dataPacket = dataIn[1:-1].split('][')
-            if len(dataPacket) != SPData.lenData: #flush & retry
-                print("error")
-                controlBool = False
-                localMu.reset_input_buffer()
-                return lastCheck, controlBool
-            #Expected form dataPacket[i]: "totCount|rotDir"
-            #Or "totCount|rotDir|currentVal|homingBool"
-            #Extract both variables, put into SPData object.
-            SPData.ExtractVars(dataPacket)
-    else:
-        return lastCheckOld, controlBool
-    return lastCheck, controlBool
+    if localMu.inWaiting() == 0:
+        return controlBool
+    elif localMu.inWaiting() > 0:
+        try:
+            dataIn = GetComms(localMu, encAlg)
+        except InputError as e:
+            controlBool = False
+            print(str(e))
+            localMu.reset_input_buffer()
+            return controlBool
+        except UnicodeDecodeError as e:
+            controlBool = False
+            localMu.reset_input_buffer()
+            return controlBool
+        dataPacket = dataIn[1:-1].split('][')
+        if len(dataPacket) != SPData.lenData: #flush & retry
+            print("error")
+            controlBool = False
+            localMu.reset_input_buffer()
+            return controlBool
+        localMu.reset_input_buffer()
+        #Expected form dataPacket[i]: "totCount|rotDir"
+        #Or "totCount|rotDir|currentVal|homingBool"
+        #Extract both variables, put into SPData object.
+        SPData.ExtractVars(dataPacket)
+    return controlBool
 
 #Proof-of-concept function: No tests available
 def SetPointControl1(SPData: SerialData, localMu: serial.Serial, 
