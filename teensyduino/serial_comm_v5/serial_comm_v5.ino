@@ -20,7 +20,7 @@ int rotCCW[nCommands]; //Desired direction
 const byte mPins[nCommands][2] = {{7,33},{36,6},{13,37},{14,15},{19,18},{5,4}};
 
 //Encoder pins
-const byte ePins[nCommands][2] = {{0,1},{9,3},{12,11},{24,25},{27,28},{30,31}};
+const byte ePins[nCommands][2] = {{1,0},{9,3},{12,11},{24,25},{27,28},{30,31}};
 
 //Current sensor pins
 const byte cPins[nCommands] = {38, 39, 40, 41, 14, 15};
@@ -35,7 +35,7 @@ char totCountBuff[nCommands][10]; //Supports long's up to +/-10.000.000 counts
 char rotDirBuff[nCommands][2];
 char homingBuff[nCommands][2];
 
-int dtComm = 100; //In milliseconds. Make sure this aligns with dtComm in Python code!
+int dtComm = 50; //In milliseconds. Make sure this aligns with dtComm in Python code!
 int dtSense = 200; //In milliseconds
 
 
