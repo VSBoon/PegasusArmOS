@@ -55,9 +55,9 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
     the Newton-Euler inverse dynamics algorithm once. Based on the
     Modern Robotics Python Library.
     :param robot: A Robot class describing the robot mathematically.
-    :param thetaList: List of desired joint angles.
-    :param dthetaList: List of desired joint velocities.
-    :param ddthetaList: List of desired joint accelerations.
+    :param theta: List of desired joint angles.
+    :param dtheta: List of desired joint velocities.
+    :param ddtheta: List of desired joint accelerations.
     :param g: 3-dimensional gravity vector in [m/s^2].
     :param FTip: 6-dimensional End-effector wrench.
     :return tau: A list of required joint torques at the output shaft.
@@ -94,13 +94,11 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
     F = np.zeros((6, n+1))
     F[:, n] = FTip
     tau = np.zeros(n)
-    tauFric = np.zeros(n)
     #Forward iterations
     for i in range(n):
-        if i != n-1:
+        if i != n-1 and i != 1:
             #Adjoint of the transformation matrix {i} to {s} in the home config
-            #For some reason, Tsi = robot.links[i].Tsi gives the wrong answer...
-            Tsi = np.dot(Tsi, robot.links[i].Tii)
+            Tsi = robot.links[i].Tsi
             AdHis[i] = mr.Adjoint(mr.TransInv(Tsi))
             #Screw axis in frame {i}. np.array([]) to go from 1D to 2D
             screwA[:,i] = np.dot(AdHis[i],screwS[:,i])
@@ -122,16 +120,20 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
             V[:,i+1] = screwA[:,i]*dtheta[i] + np.dot(AdTiiN[i], V[:,i-1])
             dV[:,i+1] = screwA[:,i]*ddtheta[i] + np.dot(AdTiiN[i], dV[:,i-1]) + \
                     np.dot(mr.ad(V[:,i+1]), screwA[:,i]*dtheta[i])
-        """Compute joint friction based on friction model of joint."""
-        tauStat = robot.joints[i].fricPar['stat']
-        tauKin = robot.joints[i].fricPar['kin']
-        bVisc = robot.joints[i].fricPar['visc']
-        eff = robot.joints[i].fricPar['eff']
-        tauFric[i] = FricTau(tau[i], dtheta[i], tauStat, bVisc, tauKin, eff)
+        elif i == 1:
+            #EXPERIMENTAL, feel free to remove.
+            #Since Joint 2 is a wormgear, expect no effect from previous joint vel.
+            AdHis[i] = mr.Adjoint(mr.TransInv(Tsi))
+            screwA[:,i] = np.dot(AdHis[i],screwS[:,i])
+            expT[i] = mr.MatrixExp6(mr.VecTose3(screwA[:,i]*-theta[i]))
+            AdTiiN[i] = mr.Adjoint(np.dot(expT[i],mr.TransInv(robot.TllList[i])))
+            V[:,i+1] = screwA[:,i]*dtheta[i]
+            dV[:,i+1] = screwA[:,i]*ddtheta[i] + np.dot(AdTiiN[i], dV[:,i-1]) + \
+                    np.dot(mr.ad(V[:,i+1]), screwA[:,i]*dtheta[i])
 
     #Backward iterations
     for i in range(n-1, -1, -1):
-        if i != n-2:
+        if i != n-2 and i != 1:
             """Wrench due to wrench next link + link acceleration - 
             Coriolis/centripetal terms"""
             F[:,i] = np.dot(AdTiiN[i+1].T, F[:,i+1]) + \
@@ -141,18 +143,17 @@ def FeedForward(robot: Robot, theta: List, dtheta: List, ddtheta: List,
             F[:,i] = np.dot(AdTiiN[i+2].T, F[:,i+2]) + \
                 np.dot(robot.GiList[i], dV[:,i+1]) - \
                 np.dot(mr.ad(V[:,i+1]).T, np.dot(robot.GiList[i], V[:,i+1]))
+        elif i == 1:
+            #EXPERIMENTAL, feel free to remove.
+            #Since Joint 2 is a wormgear, expect no effect from previous joint force.
+            F[:,i] = np.dot(robot.GiList[i], dV[:,i+1]) - \
+                     np.dot(mr.ad(V[:,i+1]).T, np.dot(robot.GiList[i], 
+                                                      V[:,i+1]))
         """Obtain torques by projection through screwA, effectively a
         column of the Jacobian between wrenches/twists in {i} and 
         joint space"""
-        tau[i] = np.dot(F[:,i].T, screwA[:,i]) + tauFric[i] 
-        tauStat = robot.joints[i].fricPar['stat']
-        tauKin = robot.joints[i].fricPar['kin']
-        bVisc = robot.joints[i].fricPar['visc']
-        eff = robot.joints[i].fricPar['eff']
-        tauFric[i] = FricTau(tau[i], dtheta[i], tauStat, bVisc, tauKin, 
-                                eff)
-        tau[i] += tauFric[i]
-        
+        tau[i] = np.dot(F[:,i].T, screwA[:,i])
+        tau[i] /= robot.joints[i].fricPar['eff']  
     return tau
 
 def MassMatrix(robot: Robot, theta: List) -> np.ndarray:
