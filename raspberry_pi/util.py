@@ -217,7 +217,9 @@ def Curr2MSpeed(currMotor: float) -> float:
     :return mSpeed: PWM value in the range [0,255].
     NOTE: mSpeed should still be normalized to [mSpeedMin, mSpeedMax]!
     """
-    linFactor = 255/2 #TODO: FIND ACCURATE LINFACTOR!
+    #2000 is based on experiments! USE WITH CAUTION! 
+    # For safe play, use linFactor = 255/2
+    linFactor = 2000
     mSpeed = currMotor *linFactor
     return mSpeed
 

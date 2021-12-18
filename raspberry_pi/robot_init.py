@@ -76,7 +76,7 @@ links = [L0, L1, L2, L34, L34]
 
 """Torque constant at the input shaft of the motor, so before the 
 internal gearbox"""
-km = [36.5e-3,36.5e-3,36.5e-3,36.5e-3,36.5e-3,26.4e-3] 
+km = [59.2,59.2,59.2,59.2,59.2,42.82] #Based on experiments: HIGHLY UNSURE! 
 J0 = Joint(S0, [None, L0], gearRatioList[0], km[0], cpr, lims0)
 J1 = Joint(S1, [L0, L1], gearRatioList[1], km[1], cpr, lims1)
 J2 = Joint(S2, [L1, L2], gearRatioList[2], km[2], cpr, lims2)
