@@ -58,13 +58,13 @@ S4 = np.array([1,0,0,0,0.585,0.016])
 
 """Lower- and upper limits of each (virtual) joint from the home
 position."""
-lims0 = [-0.945*np.pi, 0.945*np.pi] #+/- 170 deg
-lims1 = [-0.25*np.pi, 0.5*np.pi] #-45 deg, + 90 deg
-lims2 = [-np.pi, 0.25*np.pi] #-180 deg, + 45 deg.
-lims3 = [-np.pi, 0.25*np.pi] #-180 deg, +45 deg.
+lims0 = [-0.66*np.pi, 0.66*np.pi] #+/- 120 deg
+lims1 = [-0.45*np.pi, 0.45*np.pi] #-80 deg, + 80 deg
+lims2 = [-0.55*np.pi, 0.55*np.pi] #-80 deg, + 80 deg.
+lims3 = [-0.55*np.pi, 0.1*np.pi] #-100 deg, + 18 deg.
 lims4 = [-np.pi, np.pi] #+/- 180 deg.
 
-gearRatioList = [19.7*50, 19.7*50, (65.5*20)/9, (65.5*20)/9, (127.7*32)/9]
+gearRatioList = [19.7*25, 19.7*25, 127.7*32/9, (65.5*20)/9, (65.5*20)/9]
 cpr = 512 #Encoder counts per revolution of the initial motor shaft.
 
 """Link-class objects for each link"""
@@ -76,7 +76,7 @@ links = [L0, L1, L2, L34, L34]
 
 """Torque constant at the input shaft of the motor, so before the 
 internal gearbox"""
-km = [36.5e-3,36.5e-3,36.5e-3,36.5e-3,36.5e-3,26.4e-3] 
+km = [59.2,59.2,59.2,59.2,59.2,42.82] #Based on experiments: HIGHLY UNSURE! 
 J0 = Joint(S0, [None, L0], gearRatioList[0], km[0], cpr, lims0)
 J1 = Joint(S1, [L0, L1], gearRatioList[1], km[1], cpr, lims1)
 J2 = Joint(S2, [L1, L2], gearRatioList[2], km[2], cpr, lims2)
@@ -88,17 +88,26 @@ robot = Robot(joints, links, TsbHome)
 
 """Here, we add a friction model to our joints for a second (hopefully 
 more accurate) instance of the robot. Values should be experimentally confirmed!"""
-PWMMinWormGear = 60 #Can be confirmed & adjusted!
-PWMMinSprocket = 30 #Should be confirmed & adjusted!
-eff = [0.65, 0.65, 0.75, 0.75, 0.75]
-tauStat0 = (2/255)*(J0.gearRatio*J0.km)*PWMMinWormGear
-tauStat1 = (2/255)*(J1.gearRatio*J1.km)*PWMMinWormGear
-tauStat2 = (2/255)*(J2.gearRatio*J2.km)*PWMMinSprocket
-tauStat3 = (2/255)*(J3.gearRatio*J3.km)*PWMMinSprocket
-tauStat4 = (2/255)*(J4.gearRatio*J4.km)*PWMMinSprocket
+PWMMinWormGear = 80 #Can be confirmed & adjusted!
+PWMMinSprocket = 40 #Should be confirmed & adjusted!
+eff = [0.2, 0.2, 0.6, 0.6, 0.6]
+tauStat0 = 3 #Determined practically (trial-and-error)
+tauStat1 = 2 #Determined practically (trial-and-error)
+tauStat2 = 1.35 #Experimentally determined, tweaked practically
+tauStat3 = 1.3 #Determined practically (trial-and-error)
+tauStat4 = 0.7 #Determined practically (trial-and-error)
+#tauStat0 = 5
+#tauStat1 = 5
+#tauStat2 = 2
+#tauStat3 = 2
+#tauStat4 = 2
+
 tauStat = [tauStat0, tauStat1, tauStat2, tauStat3, tauStat4]
-tauKin = [0.9*stat for stat in tauStat]
+tauKin = [0.2*stat for stat in tauStat]
+tauKin[0] = tauStat[0]
 bVisc = [0,0,0,0,0]
+#Experimental data: USE WITH CAUTION!
+km[2] = 59.2
 J0N = Joint(S0, [None, L0], gearRatioList[0], km[0], cpr, lims0, tauStat[0], 
             tauKin[0], bVisc[0], eff[0])
 J1N = Joint(S1, [L0, L1], gearRatioList[1], km[1], cpr, lims1, tauStat[1], 
@@ -109,5 +118,6 @@ J3N = Joint(S3, [L2,L34], gearRatioList[3], km[3], cpr, lims3, tauStat[3],
             tauKin[3], bVisc[3], eff[3])
 J4N = Joint(S4, [L2,L34], gearRatioList[4], km[4], cpr, lims4, tauStat[4], 
             tauKin[4], bVisc[4], eff[4])
-joints = [J0N, J1N, J2N, J3N, J4N]
-robotFric = Robot(joints, links, TsbHome)
+joints2 = [J0N, J1N, J2N, J3N, J4N]
+robotFric = Robot(joints2, links, TsbHome)
+#print(robotFric.joints[0].fricPar['stat'])

@@ -207,6 +207,8 @@ def Tau2Curr(tauComm: float, gRatio: float, km: float,
     currMotor = tauMotor/km
     if currMotor > currLim:
         currMotor = currLim
+    elif currMotor < -currLim:
+        currMotor = -currLim
     return currMotor
 
 def Curr2MSpeed(currMotor: float) -> float:
@@ -215,35 +217,39 @@ def Curr2MSpeed(currMotor: float) -> float:
     :return mSpeed: PWM value in the range [0,255].
     NOTE: mSpeed should still be normalized to [mSpeedMin, mSpeedMax]!
     """
-    linFactor = 255/2 #TODO: FIND ACCURATE LINFACTOR!
+    #2000 is based on experiments! USE WITH CAUTION! 
+    # For safe play, use linFactor = 255/2
+    linFactor = 2000
     mSpeed = currMotor *linFactor
     return mSpeed
 
-def LimDamping(theta: np.ndarray, dtheta: np.ndarray, 
-               limList: List[List[float]], k: float=20) -> np.ndarray:
+def LimDamping(theta: np.ndarray, val: np.ndarray, 
+               limList: List[List[float]], k: float=10) -> np.ndarray:
     """Ensures joint velocities are damped when coming close to / crossing"""
     n = len(limList)
-    dthetaNew = dtheta.copy()
+    valNew = val.copy()
     for i in range(n):
-            overshot = False
-            if abs(theta[i] - limList[i][0]) < \
-            abs(theta[i] - limList[i][1]):
-                limClose = limList[i][0]
-                toLim = dtheta[i] < 0
-                if theta[i] < limClose:
-                    overshot = True
+        overshot = False
+        damping = 1
+        if abs(theta[i] - limList[i][0]) < \
+        abs(theta[i] - limList[i][1]):
+            limClose = limList[i][0]
+            toLim = val[i] < 0
+            if theta[i] < limClose:
+                overshot = True
+        else:
+            limClose = limList[i][1]
+            toLim = val[i] > 0
+            if theta[i] > limClose:
+                overshot = True
+        if toLim:
+            if overshot:
+                damping = 0
             else:
-                limClose = limList[i][1]
-                toLim = dtheta[i] > 0
-                if theta[i] > limClose:
-                    overshot = True
-            if toLim:
-                if overshot:
-                    damping = 0
-                else:
-                    damping = abs(np.arctan(k*(theta[i]-limClose)))/(0.5*np.pi)
-                    dthetaNew[i] *= damping
-    return dthetaNew
+                damping = abs(np.arctan(k*(theta[i]-limClose)))/(0.5*np.pi)
+        valNew[i] *= damping
+    return valNew
+
 
 
 

@@ -7,12 +7,13 @@ parent = os.path.dirname(current)
 sys.path.append(parent)
 
 import numpy as np
+import pygame
 from control import PosControl
 from classes import SerialData, PID
 from robot_init import robot, robotFric
 from util import LimDamping
 
-"""NOTE: To run these tests, remove any notion of the localMu object in """
+"""NOTE: To run these tests, remove any notion of the localMu object in control.py"""
 
 def test_PosCtrlNoErrors():
     serial = SerialData(6, [0,0,0,0,0,0], [1,1,1,1,1,1], [0.1,0.1,0.1,0.1,0.1,0.1], robot.joints)
@@ -27,7 +28,11 @@ def test_PosCtrlNoErrors():
     PIDObj = PID(kP, kI, kD, ILim=np.array([3,3,3,3,3]))
     dtComm = 0.5
     dtPID = 0.02
-    PosControl(sConfig, eConfig, robot, serial, dt, vMax, omgMax, PIDObj, dtComm, dtPID)
+    dtFrame = 0.05
+    pygame.init()
+    screen = pygame.display.set_mode([700, 500])
+    background = pygame.image.load(os.path.join(parent,'control_overview.png'))
+    PosControl(sConfig, eConfig, robot, serial, dt, vMax, omgMax, PIDObj, dtComm, dtPID, dtFrame, screen, background)
     assert True
 
 def test_LimDamping():
