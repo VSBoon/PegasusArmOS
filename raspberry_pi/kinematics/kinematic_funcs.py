@@ -52,7 +52,10 @@ def FKSpace(TsbHome: np.ndarray, spaceScrews: List[np.ndarray],
         elif "out of bounds" in str(e): #Non-transposed screw axes.
             spaceMat = screwsToMatT(spaceScrews)
         TsbNew = mr.FKinBody(TsbHome, spaceMat, thetaList)
-
+        DistToSE3 = mr.DistanceToSE3(TsbNew)
+        if DistToSE3 < 1e+9:
+            #Compensate for numerical rounding errors
+            TsbNew = mr.ProjectToSE3(TsbNew)
     #TODO: Add checks to see if screw axes are normalized 
     #(i.e. either |rotational part| == 1, or |linear part| == 1)
     return TsbNew
