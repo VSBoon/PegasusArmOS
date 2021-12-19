@@ -12,7 +12,7 @@ from typing import List, Tuple
 from util import ThetaInitGuess, screwsToMat, screwsToMat1D, screwsToMatT
 from classes import IKAlgorithmError
 
-#TODO: Implement IK, translate back to actual joint angles m4 & m5
+#TODO: REVISIT KINEMATICS: Reduces unreliable results for Pegasus Arm!
 
 def FKSpace(TsbHome: np.ndarray, spaceScrews: List[np.ndarray], 
            thetaList: List[float]) -> np.ndarray:
@@ -53,7 +53,7 @@ def FKSpace(TsbHome: np.ndarray, spaceScrews: List[np.ndarray],
             spaceMat = screwsToMatT(spaceScrews)
         TsbNew = mr.FKinBody(TsbHome, spaceMat, thetaList)
         DistToSE3 = mr.DistanceToSE3(TsbNew)
-        if DistToSE3 < 1e+9:
+        if DistToSE3 < 1e+9 and DistToSE3 > 1e-15:
             #Compensate for numerical rounding errors
             TsbNew = mr.ProjectToSE3(TsbNew)
     #TODO: Add checks to see if screw axes are normalized 
@@ -62,7 +62,7 @@ def FKSpace(TsbHome: np.ndarray, spaceScrews: List[np.ndarray],
 
 def IKSpace(TsbHome: np.ndarray, TsbTarget: np.ndarray, spaceScrews: 
             List[np.ndarray], jointLimits: List[List[float]], nGuessJoints: 
-            int=2, eRad: float=2e-2, eLin: float=2e-2) -> Tuple[np.ndarray, bool]:
+            int=2, eRad: float=2e-2, eLin: float=1e-2) -> Tuple[np.ndarray, bool]:
     """Iteratively computes the list of joint angles of a robot that 
     result in the desired end-effector configuration. If multiple 
     solutions exist, it will return the solution with the smallest
@@ -91,7 +91,9 @@ def IKSpace(TsbHome: np.ndarray, TsbTarget: np.ndarray, spaceScrews:
                        TsbTarget.
     :return success: Boolean that returns whether a valid solution was
                      found (True) or not (False).
-    
+    NOTE: Something seems to go wrong in the inverse kinematics, 
+    atleast when using the Pegasus model!It is incredibly inaccurate 
+    and almost always fails to find a satisfactory set of joint angles.
     Example input:
     TsbCurrent = np.array([[1,0,0,0],
                            [0,1,0,5],
