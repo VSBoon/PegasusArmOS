@@ -88,19 +88,17 @@ robot = Robot(joints, links, TsbHome)
 
 """Here, we add a friction model to our joints for a second (hopefully 
 more accurate) instance of the robot. Values should be experimentally confirmed!"""
-PWMMinWormGear = 80 #Can be confirmed & adjusted!
-PWMMinSprocket = 40 #Should be confirmed & adjusted!
 eff = [0.2, 0.2, 0.6, 0.6, 0.6]
-tauStat0 = 3 #Determined practically (trial-and-error)
-tauStat1 = 2 #Determined practically (trial-and-error)
-tauStat2 = 1.35 #Experimentally determined, tweaked practically
-tauStat3 = 1.3 #Determined practically (trial-and-error)
-tauStat4 = 0.7 #Determined practically (trial-and-error)
-#tauStat0 = 5
-#tauStat1 = 5
-#tauStat2 = 2
-#tauStat3 = 2
-#tauStat4 = 2
+# tauStat0 = 3 #Determined practically (trial-and-error)
+# tauStat1 = 2 #Determined practically (trial-and-error)
+# tauStat2 = 1.35 #Experimentally determined, tweaked practically
+# tauStat3 = 1.3 #Determined practically (trial-and-error)
+# tauStat4 = 0.7 #Determined practically (trial-and-error)
+tauStat0 = 0
+tauStat1 = 1.35
+tauStat2 = 1.35
+tauStat3 = 0.2
+tauStat4 = 0.2
 
 tauStat = [tauStat0, tauStat1, tauStat2, tauStat3, tauStat4]
 tauKin = [0.2*stat for stat in tauStat]

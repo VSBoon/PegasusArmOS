@@ -262,36 +262,35 @@ def HoldPos(serial: SerialData, Teensy: serial.Serial, robot: Robot, PIDObj: PID
     g = np.array([0,0,-9.81])
     tauFF = FeedForward(robot, thetaDes, np.zeros(5), np.zeros(5), g, FTip)
     tauPID = PIDObj.Execute(thetaDes, thetaCurr, dtHold)
-    for i in range(thetaCurr.size):
-        if abs(thetaCurr[i] - thetaDes[i]) < eLim[i]:
-            tauPID[i] = 0
     tau = tauFF + tauPID
     tauFric = np.zeros(5)
     for i in range(tau.size):
         """Compute joint friction based on friction model of joint."""
-        if not np.isclose(tauPID[i], 0, atol=1e-05) and np.isclose(dthetaCurr[i], 0, atol=1e-01):
-            tauStat = robot.joints[i].fricPar['stat']
-            tauFric[i] = tauStat*np.sign(tau[i])
-        elif np.isclose(tauPID[i], 0, atol=1e-05) and not np.isclose(dthetaCurr[i],0,atol=1e-01):
-            tauKin = robot.joints[i].fricPar['kin']
-            tauFric[i] = tauKin*np.sign(tau[i]) 
+        # if not np.isclose(tauPID[i], 0, atol=1e-05) and np.isclose(dthetaCurr[i], 0, atol=1e-01):
+        #     tauStat = robot.joints[i].fricPar['stat']
+        #     tauFric[i] = tauStat*np.sign(tau[i])
+        # elif np.isclose(tauPID[i], 0, atol=1e-05) and not np.isclose(dthetaCurr[i],0,atol=1e-01):
+        #     tauKin = robot.joints[i].fricPar['kin']
+        #     tauFric[i] = tauKin*np.sign(tau[i]) 
+        tauStat = robot.joints[i].fricPar['stat']
+        tauFric[i] = tauStat
     tau += tauFric
     #Diff-drive properties:
-    tauJ4 = tau[3]
-    tauJ5 = tau[4]
+    tauJ4 = tau[3].copy()
+    tauJ5 = tau[4].copy()
     tau[3] = (-tauJ4*1.1 - tauJ5) #This motor struggle more than the other
     tau[4] = tauJ4 - tauJ5
-    PWM = tau*33.78
-    PWM = np.round(LimDamping(thetaCurr, PWM, robot.limList, k=20))
+    PWM = np.round(tau*33.78)
+    #PWM = np.round(LimDamping(thetaCurr, PWM, robot.limList, k=20)) #DEBUG COMMENTED
 
     if time.perf_counter() - lastComm >= dtComm:
         SReadAndParse(serial, Teensy)
-        serial.mSpeed[:-1] = [abs(val) for val in PWM]
+        serial.mSpeed[:-1] = [abs(val) if abs(val) < 255 else 255 for val in PWM]
         serial.rotDirDes = [np.sign(PWM[i]) if 
                             np.sign(PWM[i]) == 1 else 0 for i in 
                             range(serial.lenData-1)]
         for i in range(serial.lenData-1): #TODO: Add Gripper function
-            serial.dataOut[i] = f"{abs(serial.mSpeed[i])}|"+\
+            serial.dataOut[i] = f"{serial.mSpeed[i]}|"+\
                                 f"{serial.rotDirDes[i]}"
         print(f"HoldPos: {serial.dataOut}")
         #TODO: Replace last entry w/ gripper commands
@@ -307,7 +306,7 @@ def HoldPos(serial: SerialData, Teensy: serial.Serial, robot: Robot, PIDObj: PID
         screen.blit(background, (0,0))
         pygame.display.update()
         lastFrame = time.perf_counter()
-    return lastComm, lastFrame
+    return lastComm, lastFrame, tau #TAU IS TEMP!
 
 if __name__ == "__main__":
     robotSelected = False

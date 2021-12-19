@@ -5,13 +5,13 @@ model. For the robot model, see robot_init.py. If you desire to change
 settings related to main.py, kindly do so here and in robot_init.py."""
 sett = dict()
 #Time between refreshing frames for the UI [s].
-sett['dtFrame'] = 0.1
+sett['dtFrame'] = 0.05
 #Time between PID updates. Note: higher dtPID leads to more instability! [s].
 sett['dtPID'] = 0.05
 #Data communication interval with Teensy [s].
 sett['dtComm'] = 0.05 #Ensure equal to one in Teensy code [s].
 #Time between FF updates [s].
-sett['dtFF'] = 0.05 
+sett['dtFF'] = 0.05
 #Time interval between trajectory sub-configurations [s].
 sett['dtPosConfig'] = 0.05
 #Interval for updating the FF & PID while holding a position [s].
@@ -21,11 +21,11 @@ sett['vMax'] = 0.01
 #Maximum rotational velocity of the joints in position control [rad/s].
 sett['wMax'] = 0.04*np.pi
 #Proportional gain for position control [(N/m)/rad].
-sett['kPP'] = np.diag(np.array([14,22,28,6,6]))
+sett['kPP'] = np.diag(np.array([14,28,26,6,6]))
 #Integral gain for position control [(N/m)*s/rad].
-sett['kIP'] = np.diag(np.array([4,6,10,6,6]))
+sett['kIP'] = np.diag(np.array([4,6,12,3,3]))
 #Derivative gain for position control [(N/m)/(rad*s)].
-sett['kDP'] = np.diag(np.array([2,2,4,3,3]))
+sett['kDP'] = np.diag(np.array([2,2,4,1,1]))
 #Proportional gain for velocity control [(N/m)/(rad/s)].
 sett['kPV'] = np.diag(np.array([0,0,0,0,0]))
 #Integral gain for velocity control [(N/m)*s/(rad/s)].
@@ -33,7 +33,7 @@ sett['kIV'] = np.diag(np.array([0,0,0,0,0]))
 #Derivative gain for velocity control [(N/m)/(rad)].
 sett['kDV'] = np.diag(np.array([0,0,0,0,0]))
 #PID object for position control.
-sett['PIDP'] = PID(sett['kPP'], sett['kIP'], sett['kDP'], ILim=np.array([7,7,7,7,7]))
+sett['PIDP'] = PID(sett['kPP'], sett['kIP'], sett['kDP'], ILim=np.array([2,2,2,2,2]))
 #PID object for velocity control
 sett['PIDV'] = PID(sett['kPV'], sett['kIV'], sett['kDV'], ILim=np.array([5,5,5,5,5]))
 #Joint speed increase for joint velocity control when pressing the 

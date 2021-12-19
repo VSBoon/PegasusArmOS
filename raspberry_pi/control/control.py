@@ -88,7 +88,7 @@ def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List
     timeScaling=5)
     print(f"Total estimated time for trajectory: {round(dt*traj[:,0].size, 2)} s")
     traj, velTraj, accTraj = TrajDerivatives(traj, method, robot, dt)
-    g = np.array([0,0,-9.81*2]) #EXPERIMENTAL!
+    g = np.array([0,0,-9.81]) #EXPERIMENTAL!
     FTip = np.zeros(6) #Position control, --> assume no end-effector force.
     tauPID = np.zeros(traj[0,:].size)
     n = -1 #iterator
@@ -136,7 +136,7 @@ def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List
             #Take care of communication on an interval basis:
         if (time.perf_counter() - lastWrite >= dtComm):
             SReadAndParse(serial, localMu)
-            serial.mSpeed[:-1] = [abs(val) for val in PWM]
+            serial.mSpeed[:-1] = [abs(val) if abs(val) < 255 else 255 for val in PWM]
             serial.rotDirDes = [np.sign(PWM[i]) if 
                                 np.sign(PWM[i]) == 1 else 0 for i in 
                                 range(serial.lenData-1)]
