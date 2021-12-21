@@ -127,19 +127,20 @@ class SerialData():
         should be removed and code refactored.
         """
         self.lenData = lenData
-        self.desAngle = desAngles
+        self.desAngle = desAngles #Depricated
         self.joints = joints
         self.totCount = [0 for i in range(lenData)]
         self.rotDirCurr = [None for i in range(lenData)]
         self.current = [None for i in range(lenData)]
         self.homing = [None for i in range(lenData)]
+        #Often used in the form SerialData.currAngle[:-1]
         self.currAngle = [0. for i in range(lenData)]
         self.prevAngle = [0. for i in range(lenData)]
         self.mSpeed = [0. for i in range(lenData)]
         self.rotDirDes = [0 for i in range(lenData)]
-        self.dataOut = ['0|0|0' for i in range(lenData)]
-        self.maxDeltaAngle = maxDeltaAngle
-        self.angleTol = angleTol
+        self.dataOut = ['0|0' for i in range(lenData)]
+        self.maxDeltaAngle = maxDeltaAngle #Depricated
+        self.angleTol = angleTol #Depricated
         self.limBool = [False for i in range(lenData)]
 
     def ExtractVars(self, dataPacket: List[str]):
@@ -153,7 +154,7 @@ class SerialData():
         """
         for i in range(self.lenData):
             args = dataPacket[i].split('|')
-            if len(args) == 3:
+            if len(args) >= 3:
                 self.homing[i] = args[2]
                 self.homing[i] = int(self.homing[i])
             if len(args) == 4:
@@ -163,7 +164,6 @@ class SerialData():
             self.totCount[i] = int(self.totCount[i])
             self.rotDirCurr[i] = int(self.rotDirCurr[i])
             self.prevAngle[i] = self.currAngle[i]
-            #TODO: CHECK!!!
             if i == self.lenData-1:
                     #Gripper doesn't have an 'angle'
                     self.currAngle[i] = self.totCount[i]
@@ -194,6 +194,7 @@ class SerialData():
 
     def Dtheta2Mspeed(self, dtheta: "np.ndarray[float]", 
                       dthetaMax: List[float], PWMMin: int, PWMMax: int):
+        #DEPRICATED!
         """Translates desired motor velocities in rad/s to PWM.
         :param dtheta: Numpy array of motor velocities in [rad/s].
         :param dthetaMax: Angular velocity of each motor at a PWM of 255.
@@ -208,6 +209,7 @@ class SerialData():
             for i in range(self.lenData-1)] #Rudimentary solution, PID will help!
 
     def CheckCommFault(self) -> bool:
+        #DEPRICATED
         """Checks if data got corrupted using a maximum achievable 
         change in angle between two timesteps.
         :return commFault: Boolean indicating if new angle is 
@@ -229,6 +231,7 @@ class SerialData():
         return commFault
     
     def CheckTolAng(self) -> bool:
+        #DEPRICATED
         """Determines if the desired angle has been reached within the 
         given tolerance, and if the desired angle is reachable.
         If the desired angle is unreachable, the closest angle is chosen.
@@ -267,6 +270,7 @@ class SerialData():
 
     
     def GetDir(self):
+        #DEPRICATED
         """Gives the desired direction of rotation.
         """
         for i in range(self.lenData):
@@ -279,7 +283,8 @@ class SerialData():
                 self.rotDirDes[i] = self.rotDirCurr[i]
     
     def PControl1(self, i: int, mSpeedMax: int, mSpeedMin: int):
-        """Gives motor speed commands proportional to the angle error.
+        #DEPRICATED
+        """Gives motor speed commands propor tional to the angle error.
         :param i: Current iteration number.
         :param mSpeedMax: Maximum rotational speed, 
                           portrayed in PWM [0, 255].

@@ -11,7 +11,7 @@ import time
 import pygame
 import matplotlib.pyplot as plt
 from dynamics.dynamics_funcs import FeedForward
-from robot_init import robotFric as Pegasus
+from robot_init import robot as Pegasus
 from settings import sett
 from typing import Tuple
 from classes import SerialData, Robot, PID
@@ -20,6 +20,7 @@ from serial_comm.serial_comm import StartComms, SReadAndParse
 from control.control import PosControl
 from main import HoldPos
 
+dataMat = np.zeros((1,8)) #First three for encoder readings, second three for output torques
 serial = SerialData(6, Pegasus.joints)
 #port = FindSerial(askInput=True)[0]
 Teensy = StartComms('COM13') #TEMPORARY, REPLACE WITH port
@@ -31,26 +32,31 @@ try:
     dtAct = sett['dtFF']*0.5
     dtComm = sett['dtComm']
     D = sett['D'] #Absolute rotational damper
-    serial = SerialData(6, Pegasus.joints)
+    SReadAndParse(serial, Teensy)
     thetaStart = np.array(serial.currAngle[:-1])
     #thetaDes = np.array([0*np.pi,0,0.5*np.pi,-0.5*np.pi,0.5*np.pi])
-    thetaDes = np.array([0.2*np.pi,0,0,0,0])
+    thetaDes = np.array([0.*np.pi,0.*np.pi,0*np.pi,0*np.pi,0])
     pygame.init()
     screen = pygame.display.set_mode([700, 500])
     background = pygame.image.load(os.path.join(parent,'control_overview.png'))
-    PosControl(thetaStart, thetaDes, Pegasus, serial, 0.1, 0.1, 0.2, PIDObj, dtComm, dtAct, sett['dtFrame'], Teensy, screen, background)
+    PosControl(thetaStart, thetaDes, Pegasus, serial, 0.1, 0.1, 0.1, PIDObj, dtComm, dtAct, sett['dtFrame'], Teensy, screen, background)
     lastHold = -100 #Last hold should run first
     lastComm = time.perf_counter()
     lastFrame = time.perf_counter()
     dtHold = sett['dtFF']
     dtFrame = sett['dtFrame']
     PWM = serial.mSpeed[:-1]
+    newRow = np.zeros((1,8)) #TEMP
     print("Start holding")
     while True:
         if time.perf_counter() - lastHold >= dtHold:
-            lastComm, lastFrame = HoldPos(serial, Teensy, Pegasus, PIDObj, thetaDes, lastComm, lastFrame, dtComm, dtHold, dtFrame, screen, background)
+            lastComm, lastFrame, tau = HoldPos(serial, Teensy, Pegasus, PIDObj, thetaDes, lastComm, lastFrame, dtComm, dtHold, dtFrame, screen, background)
             lastHold = time.perf_counter()
+            newRow[0,0:4] = np.array([np.array(serial.currAngle[1:-1]) - thetaDes[1:]])
+            newRow[0,4:] = tau[1:]
+            dataMat = np.vstack((dataMat, newRow))
 finally:
+    np.savetxt("PIDDataLowAngle4.csv", dataMat, fmt="%.4f", delimiter=',')
     serial.dataOut = [f"{0|0}" for i in range(serial.lenData)]
     Teensy.write(f"{serial.dataOut}\n".encode('utf-8'))
     Teensy.__del__()

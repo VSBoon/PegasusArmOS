@@ -88,7 +88,7 @@ def PosControl(sConfig: Union[np.ndarray, List], eConfig: Union[np.ndarray, List
     timeScaling=5)
     print(f"Total estimated time for trajectory: {round(dt*traj[:,0].size, 2)} s")
     traj, velTraj, accTraj = TrajDerivatives(traj, method, robot, dt)
-    g = np.array([0,0,-9.81]) #EXPERIMENTAL!
+    g = np.array([0,0,-9.81])
     FTip = np.zeros(6) #Position control, --> assume no end-effector force.
     tauPID = np.zeros(traj[0,:].size)
     n = -1 #iterator
