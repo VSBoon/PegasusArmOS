@@ -24,4 +24,4 @@ Main contributor: V.S. Boon
 Code commissioned by the mechatronics department of the Dedan Kimathi University of Technology.
 
 ## Closing words
-Any contribution are more than welcomed, as I hope that the project was not performed in vain. However, I (the main contributor of this repository) doesn't vouch for the reliability of any continuations of the PegasusArm OS. If you have completed a project that utilizes the PegasusArm OS, you could make me more than happy by sending a some results of what you did to [v.s.boon@student.utwente.nl](mailto:v.s.boon@student.utwente.nl) 
+Any contribution are more than welcomed, as I hope that the project was not performed in vain. However, I (the main contributor of this repository) don't vouch for the reliability of any continuations of the PegasusArm OS. If you have completed a project that utilizes the PegasusArm OS, you could make me more than happy by sending a some results of what you did to [v.s.boon@student.utwente.nl](mailto:v.s.boon@student.utwente.nl) 
